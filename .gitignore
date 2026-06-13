@@ -1,0 +1,22 @@
+# Dependencies
+node_modules/
+
+# Environment files (JANGAN PERNAH commit secrets)
+.env
+.env.local
+.env.*.local
+
+# Build output
+dist/
+.vercel/
+
+# Editor/OS
+.DS_Store
+*.log
+.idea/
+.vscode/
+
+/docs
+docs/
+
+env.local.template
