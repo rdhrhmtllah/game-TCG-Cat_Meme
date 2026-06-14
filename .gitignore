@@ -10,13 +10,11 @@ node_modules/
 dist/
 .vercel/
 
+# Drizzle
+drizzle/
+
 # Editor/OS
 .DS_Store
 *.log
 .idea/
 .vscode/
-
-/docs
-docs/
-
-env.local.template

@@ -1,0 +1,74 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  body {
+    @apply bg-gray-950 text-white;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    overscroll-behavior-y: contain;
+  }
+
+  /* Scrollbar styling */
+  ::-webkit-scrollbar {
+    width: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: #1f2937;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: #4b5563;
+    border-radius: 3px;
+  }
+
+  /* Smooth transitions for all interactive elements */
+  a, button, .card {
+    @apply transition-all duration-200;
+  }
+}
+
+@layer components {
+  /* Rarity badges */
+  .rarity-badge {
+    @apply inline-block px-2 py-0.5 rounded-full text-xs font-bold uppercase tracking-wider;
+  }
+  .rarity-common {
+    @apply bg-common/20 text-common-light border border-common/40;
+  }
+  .rarity-rare {
+    @apply bg-rare/20 text-rare-light border border-rare/40;
+  }
+  .rarity-epic {
+    @apply bg-epic/20 text-epic-light border border-epic/40;
+  }
+  .rarity-legendary {
+    @apply bg-legendary/20 text-legendary-light border border-legendary/40;
+  }
+
+  /* Card container with hover effect */
+  .card-hover {
+    @apply transform hover:scale-105 hover:shadow-lg active:scale-95;
+  }
+
+  /* Glass panel */
+  .glass-panel {
+    @apply bg-gray-900/80 backdrop-blur-md border border-gray-800 rounded-xl;
+  }
+
+  /* Primary button */
+  .btn-primary {
+    @apply px-4 py-2 bg-purple-600 hover:bg-purple-700 rounded-lg font-semibold
+           disabled:opacity-50 disabled:cursor-not-allowed active:scale-95
+           transition-all duration-150;
+  }
+
+  /* Toast styles (via teleported div) */
+  .toast-enter-active { @apply transition-all duration-300 ease-out; }
+  .toast-leave-active { @apply transition-all duration-200 ease-in; }
+  .toast-enter-from { @apply opacity-0 translate-y-4; }
+  .toast-leave-to { @apply opacity-0 translate-y-4; }
+}
