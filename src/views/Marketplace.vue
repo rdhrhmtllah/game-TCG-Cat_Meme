@@ -3,145 +3,106 @@
     <h1 class="text-xl font-bold mb-4">💎 Marketplace</h1>
 
     <!-- Tabs -->
-    <div class="flex gap-2 mb-4">
-      <button
-        @click="activeTab = 'browse'"
-        class="px-4 py-2 rounded-lg font-medium text-sm transition-colors"
-        :class="activeTab === 'browse' ? 'bg-purple-600 text-white' : 'bg-gray-800 text-gray-400'"
-      >
+    <div class="flex bg-surface-card rounded-xl p-1 gap-1 mb-4">
+      <button @click="activeTab = 'browse'" class="flex-1 py-2 rounded-lg text-sm font-medium transition-all"
+        :class="activeTab === 'browse' ? 'bg-accent text-white shadow-lg' : 'text-text-muted hover:text-text-secondary'">
         Jelajahi
       </button>
-      <button
-        @click="activeTab = 'mine'"
-        class="px-4 py-2 rounded-lg font-medium text-sm transition-colors"
-        :class="activeTab === 'mine' ? 'bg-purple-600 text-white' : 'bg-gray-800 text-gray-400'"
-      >
+      <button @click="activeTab = 'mine'" class="flex-1 py-2 rounded-lg text-sm font-medium transition-all"
+        :class="activeTab === 'mine' ? 'bg-accent text-white shadow-lg' : 'text-text-muted hover:text-text-secondary'">
         Listing Saya
       </button>
     </div>
 
-    <!-- Browse Listings -->
-    <div v-if="activeTab === 'browse'">
-      <!-- Filter -->
-      <div class="flex gap-2 mb-3 overflow-x-auto pb-2">
-        <button
-          v-for="r in ['Semua', 'Common', 'Rare', 'Epic', 'Legendary']"
-          :key="r"
-          @click="activeRarity = r === 'Semua' ? null : r; page = 1"
-          class="px-3 py-1 rounded-full text-sm font-medium whitespace-nowrap transition-colors"
-          :class="(activeRarity === r || (r === 'Semua' && !activeRarity))
-            ? 'bg-purple-600 text-white'
-            : 'bg-gray-800 text-gray-400 hover:bg-gray-700'"
-        >
-          {{ r }}
+    <!-- Browse -->
+    <template v-if="activeTab === 'browse'">
+      <div class="flex gap-2 mb-3 overflow-x-auto pb-1">
+        <button v-for="r in filters" :key="r.value" @click="activeRarity = r.value; page = 1"
+          class="px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-all border"
+          :class="(activeRarity === r.value) ? r.activeClass : 'border-white/10 text-text-muted hover:border-white/20 hover:text-text-secondary'">
+          {{ r.label }}
         </button>
       </div>
 
-      <div v-if="listings.length === 0">
-        <EmptyState
-          icon="💎"
-          title="Belum ada listing"
-          message="Tidak ada kartu yang dijual saat ini. Cek lagi nanti!"
-        />
+      <div v-if="loading" class="grid grid-cols-1 gap-3">
+        <LoadingSkeleton type="rect" :count="3" height="80px" />
+      </div>
+
+      <div v-else-if="listings.length === 0" class="glass-panel p-8 text-center">
+        <p class="text-4xl mb-3">💎</p>
+        <p class="text-text-secondary font-medium">Belum ada listing.</p>
+        <p class="text-text-muted text-sm">Jadi yang pertama jual kartu!</p>
       </div>
 
       <div v-else class="space-y-3">
-        <div
-          v-for="listing in listings"
-          :key="listing.id"
-          class="glass-panel p-4 flex items-center gap-4"
-        >
-          <div class="w-14 h-20 rounded-lg flex-shrink-0 overflow-hidden">
-            <Card3D
-              :image-url="listing.card?.imageUrl"
-              :rarity="listing.card?.rarity"
-              mode="mini"
-            />
+        <div v-for="listing in listings" :key="listing.id"
+          class="glass-panel p-3 flex items-center gap-4 card-hover">
+          <div class="w-16 h-22 rounded-lg overflow-hidden flex-shrink-0 card-frame"
+            :class="'card-frame-' + (listing.card?.rarity || 'Common').toLowerCase()">
+            <img v-if="listing.card?.imageUrl" :src="listing.card.imageUrl" class="w-full h-full object-cover" />
+            <span v-else class="w-full h-full flex items-center justify-center text-2xl">
+              {{ {Common:'🐱',Rare:'🐈',Epic:'✨',Legendary:'👑'}[listing.card?.rarity] || '🐱' }}
+            </span>
           </div>
           <div class="flex-1 min-w-0">
             <p class="font-medium truncate">{{ listing.card?.name }}</p>
-            <span class="rarity-badge text-xs" :class="'rarity-' + listing.card?.rarity?.toLowerCase()">
+            <span class="rarity-badge text-[10px]" :class="'rarity-' + (listing.card?.rarity || '').toLowerCase()">
               {{ listing.card?.rarity }}
             </span>
-            <p class="text-sm text-gray-400 mt-1">🪙 {{ listing.price.toLocaleString('id-ID') }} coin</p>
+            <p class="text-sm text-text-muted mt-0.5">🪙 {{ listing.price.toLocaleString('id-ID') }}</p>
+            <p class="text-xs text-text-muted">Penjual: {{ listing.seller?.username }}</p>
           </div>
-          <button
-            @click="handleBuy(listing)"
-            :disabled="playerStore.coins < listing.price || buyingId === listing.id"
-            class="btn-primary text-sm"
-          >
+          <button @click="handleBuy(listing)" :disabled="playerStore.coins < listing.price || buyingId === listing.id"
+            class="btn-primary text-sm px-4">
             {{ buyingId === listing.id ? '...' : 'Beli' }}
           </button>
         </div>
 
         <!-- Pagination -->
-        <div class="flex justify-center gap-2 mt-4">
-          <button
-            @click="page--"
-            :disabled="page <= 1"
-            class="px-3 py-1 bg-gray-800 rounded-lg disabled:opacity-50"
-          >
-            ←
-          </button>
-          <span class="px-3 py-1 text-sm text-gray-400">{{ page }}</span>
-          <button
-            @click="page++"
-            :disabled="listings.length < limit"
-            class="px-3 py-1 bg-gray-800 rounded-lg disabled:opacity-50"
-          >
-            →
-          </button>
+        <div class="flex justify-center gap-3 mt-4">
+          <button @click="page--" :disabled="page <= 1" class="btn-secondary text-sm px-3 py-1.5">←</button>
+          <span class="py-1.5 text-sm text-text-muted">Hal {{ page }}</span>
+          <button @click="page++" :disabled="listings.length < limit" class="btn-secondary text-sm px-3 py-1.5">→</button>
         </div>
       </div>
-    </div>
+    </template>
 
     <!-- My Listings -->
-    <div v-if="activeTab === 'mine'">
-      <div v-if="myListings.length === 0">
-        <EmptyState
-          icon="💎"
-          title="Belum ada listing"
-          message="Kamu belum menjual kartu. Jual kartu duplikat dari Binder!"
-        />
+    <template v-if="activeTab === 'mine'">
+      <div v-if="myListings.length === 0" class="glass-panel p-8 text-center">
+        <p class="text-4xl mb-3">📋</p>
+        <p class="text-text-secondary font-medium">Belum ada listing.</p>
+        <p class="text-text-muted text-sm">Jual kartu duplikat dari Binder!</p>
       </div>
+
       <div v-else class="space-y-3">
-        <div
-          v-for="listing in myListings"
-          :key="listing.id"
-          class="glass-panel p-4 flex items-center gap-4"
-        >
-          <div class="w-14 h-20 rounded-lg flex-shrink-0 overflow-hidden">
-            <Card3D
-              :image-url="listing.card?.imageUrl"
-              :rarity="listing.card?.rarity"
-              mode="mini"
-            />
+        <div v-for="listing in myListings" :key="listing.id"
+          class="glass-panel p-3 flex items-center gap-4">
+          <div class="w-16 h-22 rounded-lg overflow-hidden flex-shrink-0 card-frame"
+            :class="'card-frame-' + (listing.card?.rarity || 'Common').toLowerCase()">
+            <img v-if="listing.card?.imageUrl" :src="listing.card.imageUrl" class="w-full h-full object-cover" />
           </div>
           <div class="flex-1 min-w-0">
             <p class="font-medium truncate">{{ listing.card?.name }}</p>
-            <p class="text-sm text-gray-400">🪙 {{ listing.price.toLocaleString('id-ID') }} coin</p>
+            <p class="text-sm text-text-muted">🪙 {{ listing.price.toLocaleString('id-ID') }}</p>
           </div>
-          <button
-            @click="handleCancel(listing)"
-            class="px-3 py-2 bg-red-700 hover:bg-red-600 rounded-lg text-sm font-medium transition-colors"
-          >
-            Batal
-          </button>
+          <button @click="handleCancel(listing)" class="btn-danger text-sm px-4">Batal</button>
         </div>
       </div>
-    </div>
+    </template>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, onMounted, watch } from 'vue';
+import { ref, watch, onMounted } from 'vue';
 import { useAuthStore } from '@/stores/auth.js';
 import { usePlayerStore } from '@/stores/player.js';
-import EmptyState from '@/components/EmptyState.vue';
-import Card3D from '@/components/Card3D.vue';
+import { useToast } from '@/composables/useToast.js';
+import LoadingSkeleton from '@/components/LoadingSkeleton.vue';
 
 const authStore = useAuthStore();
 const playerStore = usePlayerStore();
+const toast = useToast();
 
 const activeTab = ref('browse');
 const activeRarity = ref(null);
@@ -150,35 +111,34 @@ const myListings = ref([]);
 const page = ref(1);
 const limit = 20;
 const buyingId = ref(null);
+const loading = ref(false);
 
-function rarityEmoji(rarity) {
-  return { Common: '🐱', Rare: '🐈', Epic: '✨', Legendary: '👑' }[rarity] || '🐱';
-}
-
-function rarityBgClass(rarity) {
-  return {
-    Common: 'bg-common/20 border border-common/30',
-    Rare: 'bg-rare/20 border border-rare/30',
-    Epic: 'bg-epic/20 border border-epic/30',
-    Legendary: 'bg-legendary/20 border border-legendary/30',
-  }[rarity] || 'bg-gray-800';
-}
+const filters = [
+  { value: null, label: 'Semua', activeClass: 'bg-white/10 text-white border-white/20' },
+  { value: 'Common', label: 'Common', activeClass: 'bg-common/30 text-common-light border-common/50' },
+  { value: 'Rare', label: 'Rare', activeClass: 'bg-rare/30 text-rare-light border-rare/50' },
+  { value: 'Epic', label: 'Epic', activeClass: 'bg-epic/30 text-epic-light border-epic/50' },
+  { value: 'Legendary', label: 'Legendary', activeClass: 'bg-legendary/30 text-legendary-light border-legendary/50' },
+];
 
 async function fetchListings() {
-  const params = new URLSearchParams({ page: page.value, limit });
-  if (activeRarity.value) params.set('rarity', activeRarity.value);
-  const res = await fetch(`/api/market/listings?${params}`);
-  const data = await res.json();
-  if (res.ok) listings.value = data.listings;
+  loading.value = true;
+  try {
+    const params = new URLSearchParams({ page: page.value, limit });
+    if (activeRarity.value) params.set('rarity', activeRarity.value);
+    const res = await fetch(`/api/market/listings?${params}`);
+    const data = await res.json();
+    if (res.ok) listings.value = data.listings;
+  } catch (e) { /* handled by skeleton */ }
+  finally { loading.value = false; }
 }
 
 async function fetchMyListings() {
-  // Fetch all listings and filter for current user's active ones
   const res = await fetch('/api/market/listings?limit=50');
   const data = await res.json();
-  if (res.ok && authStore.user) {
+  if (res.ok) {
     myListings.value = data.listings.filter(
-      l => l.sellerId === authStore.user.id && l.status === 'active'
+      l => l.sellerId === authStore.user?.id && l.status === 'active'
     );
   }
 }
@@ -188,19 +148,23 @@ async function handleBuy(listing) {
   try {
     const res = await fetch('/api/market/buy', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${authStore.token}`,
-      },
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${authStore.token}` },
       body: JSON.stringify({ listingId: listing.id }),
     });
     const data = await res.json();
-    if (!res.ok) throw data;
+    if (!res.ok) {
+      if (data.code === 'MARKET_CONFLICT') {
+        toast.info('Kartu sudah dibeli orang lain! Refresh...');
+        await fetchListings();
+        return;
+      }
+      throw data;
+    }
+    toast.success(`Kartu dibeli! -${data.pricePaid} coin`);
     await playerStore.refreshAfterAction();
     await fetchListings();
   } catch (e) {
-    // Will be handled by toast in future phase
-    console.error('Buy failed:', e);
+    toast.error(e.message || 'Gagal membeli.');
   } finally {
     buyingId.value = null;
   }
@@ -210,29 +174,24 @@ async function handleCancel(listing) {
   try {
     const res = await fetch('/api/market/cancel', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${authStore.token}`,
-      },
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${authStore.token}` },
       body: JSON.stringify({ listingId: listing.id }),
     });
     const data = await res.json();
     if (!res.ok) throw data;
+    toast.success('Listing dibatalkan, kartu kembali.');
     await playerStore.fetchInventory();
     await fetchMyListings();
   } catch (e) {
-    console.error('Cancel failed:', e);
+    toast.error(e.message || 'Gagal membatalkan.');
   }
 }
 
-watch([page, activeRarity], () => {
-  fetchListings();
-});
+watch([page, activeRarity], () => fetchListings());
+watch(activeTab, (tab) => { if (tab === 'mine') fetchMyListings(); });
 
 onMounted(async () => {
-  await Promise.all([
-    fetchListings(),
-    fetchMyListings(),
-  ]);
+  await fetchListings();
+  await fetchMyListings();
 });
 </script>

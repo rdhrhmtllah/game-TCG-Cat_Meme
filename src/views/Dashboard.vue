@@ -1,68 +1,118 @@
 <template>
-  <div class="max-w-2xl mx-auto px-4 py-6">
+  <div class="max-w-xl mx-auto px-4 py-6">
     <!-- Header -->
     <div class="flex items-center justify-between mb-6">
       <div>
-        <h1 class="text-xl font-bold">Dashboard</h1>
-        <p class="text-gray-400 text-sm">{{ authStore.user?.username }}</p>
+        <h1 class="text-2xl font-bold">MemeCats</h1>
+        <p class="text-text-muted text-sm">{{ authStore.user?.username }}</p>
       </div>
       <CoinDisplay :amount="playerStore.coins" size="lg" />
     </div>
 
-    <!-- Card Dex Progress -->
-    <div class="glass-panel p-4 mb-4">
-      <div class="flex justify-between text-sm mb-2">
-        <span class="text-gray-400">📚 Card Dex</span>
-        <span class="text-gray-300">{{ playerStore.totalCardsOwned }} / {{ playerStore.totalCardsInGame }} ({{ playerStore.dexProgress }}%)</span>
-      </div>
-      <div class="w-full bg-gray-800 rounded-full h-2">
-        <div
-          class="bg-purple-500 h-2 rounded-full transition-all duration-500"
-          :style="{ width: playerStore.dexProgress + '%' }"
-        ></div>
+    <!-- Hero Card -->
+    <div class="mb-6 rounded-2xl overflow-hidden" style="height: 340px;">
+      <Card3D
+        v-if="playerStore.featuredCard"
+        :key="'hero-' + playerStore.featuredCard.cardId"
+        :image-url="playerStore.featuredCard.imageUrl"
+        :rarity="playerStore.featuredCard.rarity"
+        mode="full"
+        class="w-full h-full"
+      />
+      <div v-else class="w-full h-full glass-panel flex flex-col items-center justify-center text-center p-6">
+        <span class="text-6xl mb-4">🌟</span>
+        <h3 class="text-lg font-semibold mb-2">Mulai Koleksimu!</h3>
+        <p class="text-text-muted text-sm mb-4">Buka pack pertamamu dan tampilkan kartu terbaik di showcase.</p>
+        <router-link to="/gacha" class="btn-primary text-sm">🎴 Buka Pack</router-link>
       </div>
     </div>
+    <!-- Hero card label -->
+    <div v-if="playerStore.featuredCard" class="text-center -mt-2 mb-6">
+      <p class="font-semibold">{{ playerStore.featuredCard.name }}</p>
+      <span class="rarity-badge" :class="'rarity-' + playerStore.featuredCard.rarity.toLowerCase()">
+        {{ playerStore.featuredCard.rarity }}
+      </span>
+    </div>
 
-    <!-- Claim Idle -->
+    <!-- Collection Progress -->
+    <div class="glass-panel p-4 mb-4">
+      <div class="flex items-center justify-between mb-2">
+        <span class="text-sm text-text-secondary">📚 Card Dex</span>
+        <span class="text-sm font-semibold">
+          {{ playerStore.totalCardsOwned }}<span class="text-text-muted">/{{ playerStore.totalCardsInGame }}</span>
+        </span>
+      </div>
+      <div class="w-full h-2.5 bg-surface rounded-full overflow-hidden">
+        <div class="h-full bg-gradient-to-r from-accent via-epic to-legendary rounded-full transition-all duration-700"
+          :style="{ width: playerStore.dexProgress + '%' }" />
+      </div>
+      <p class="text-xs text-text-muted mt-1.5">{{ playerStore.dexProgress }}% koleksi terlengkapi</p>
+    </div>
+
+    <!-- Idle Economy -->
     <div class="glass-panel p-4 mb-4">
       <div class="flex items-center justify-between">
         <div>
-          <p class="text-sm text-gray-400">💰 Yield Pasif</p>
-          <p class="text-lg font-bold text-green-400">{{ idleEstimate }} coin</p>
-          <p class="text-xs text-gray-500">{{ playerStore.totalLikesPerSec.toFixed(1) }} likes/detik dari showcase</p>
+          <p class="text-sm text-text-muted flex items-center gap-1">
+            <span>⚡</span> Yield Pasif
+          </p>
+          <p class="text-lg font-bold text-emerald-400">{{ idleEstimate }} coin</p>
+          <p class="text-xs text-text-muted">{{ playerStore.totalLikesPerSec.toFixed(1) }} likes/detik</p>
         </div>
         <button
           @click="handleClaim"
           :disabled="cooldownRemaining > 0 || claiming"
-          class="btn-primary"
+          class="btn-primary relative"
+          :class="{ 'animate-pulse-glow !shadow-accent/50': cooldownRemaining === 0 && playerStore.totalLikesPerSec > 0 }"
         >
           <template v-if="claiming">Klaim...</template>
-          <template v-else-if="cooldownRemaining > 0">{{ cooldownRemaining }}s</template>
-          <template v-else>Klaim!</template>
+          <template v-else-if="cooldownRemaining > 0">⏳ {{ cooldownRemaining }}s</template>
+          <template v-else>💰 Klaim</template>
         </button>
       </div>
     </div>
 
-    <!-- Showcase Slots -->
-    <div class="mb-4">
-      <h2 class="text-lg font-semibold mb-3">🌟 Showcase ({{ playerStore.showcase.length }}/5)</h2>
+    <!-- Quick Actions -->
+    <div class="grid grid-cols-2 gap-3 mb-4">
+      <router-link to="/binder" class="glass-panel p-4 text-center card-hover">
+        <p class="text-2xl mb-1">📒</p>
+        <p class="text-sm font-medium">Binder</p>
+        <p class="text-xs text-text-muted">{{ playerStore.inventory.length }} kartu</p>
+      </router-link>
+      <router-link to="/gacha" class="glass-panel p-4 text-center card-hover">
+        <p class="text-2xl mb-1">🎴</p>
+        <p class="text-sm font-medium">Buka Pack</p>
+        <p class="text-xs text-text-muted">100 coin</p>
+      </router-link>
+      <router-link to="/market" class="glass-panel p-4 text-center card-hover">
+        <p class="text-2xl mb-1">💎</p>
+        <p class="text-sm font-medium">Market</p>
+        <p class="text-xs text-text-muted">Jual & Beli</p>
+      </router-link>
+      <div class="glass-panel p-4 text-center card-hover cursor-pointer" @click="$router.push('/binder')">
+        <p class="text-2xl mb-1">⭐</p>
+        <p class="text-sm font-medium">Showcase</p>
+        <p class="text-xs text-text-muted">{{ playerStore.showcase.length }}/5 slot</p>
+      </div>
+    </div>
+
+    <!-- Showcase Grid -->
+    <div>
+      <h2 class="text-sm font-semibold text-text-secondary mb-3 flex items-center gap-2">
+        🌟 Showcase <span class="text-text-muted font-normal">{{ playerStore.showcase.length }}/5</span>
+      </h2>
       <div v-if="playerStore.showcase.length === 0">
-        <EmptyState
-          icon="🌟"
-          title="Showcase kosong"
-          message="Isi showcase dengan kartu dari Binder untuk mulai menghasilkan koin pasif!"
-          cta-label="Buka Binder"
-          cta-to="/binder"
-        />
+        <div class="glass-panel p-6 text-center text-text-muted text-sm">
+          <p class="mb-2">Showcase kosong — isi dengan kartu dari Binder!</p>
+          <router-link to="/binder" class="text-accent text-xs hover:underline">Buka Binder →</router-link>
+        </div>
       </div>
       <div v-else class="grid grid-cols-5 gap-2">
-        <div
-          v-for="slot in 5"
-          :key="slot"
-          class="aspect-[5/7] rounded-lg border-2 flex items-center justify-center"
+        <div v-for="slot in 5" :key="slot"
+          class="aspect-[5/7] rounded-xl border-2 flex items-center justify-center overflow-hidden cursor-pointer"
           :class="playerStore.showcase[slot - 1]
-            ? 'border-purple-500/50 bg-gray-800 cursor-pointer hover:border-purple-400'
-            : 'border-dashed border-gray-700 bg-gray-900 cursor-pointer hover:border-gray-500'"
+            ? 'border-accent/50 card-hover'
+            : 'border-dashed border-gray-700 hover:border-gray-500'"
           @click="$router.push('/binder')"
         >
           <template v-if="playerStore.showcase[slot - 1]">
@@ -70,11 +120,10 @@
               :image-url="playerStore.showcase[slot - 1].imageUrl"
               :rarity="playerStore.showcase[slot - 1].rarity"
               mode="mini"
-              class="w-full h-full"
             />
           </template>
           <template v-else>
-            <span class="text-2xl text-gray-600">+</span>
+            <span class="text-2xl text-gray-700">+</span>
           </template>
         </div>
       </div>
@@ -86,23 +135,22 @@
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue';
 import { useAuthStore } from '@/stores/auth.js';
 import { usePlayerStore } from '@/stores/player.js';
+import { useToast } from '@/composables/useToast.js';
 import CoinDisplay from '@/components/CoinDisplay.vue';
-import EmptyState from '@/components/EmptyState.vue';
 import Card3D from '@/components/Card3D.vue';
 
 const authStore = useAuthStore();
 const playerStore = usePlayerStore();
+const toast = useToast();
 
 const claiming = ref(false);
 const cooldownRemaining = ref(0);
 let cooldownInterval = null;
 
 const idleEstimate = computed(() => {
-  if (!authStore.user?.lastClaimedAt) return 0;
+  if (!authStore.user?.lastClaimedAt) return '0';
   const elapsed = Math.max(0, Math.floor((Date.now() - new Date(authStore.user.lastClaimedAt).getTime()) / 1000));
-  const capped = Math.min(elapsed, 43200);
-  const earned = Math.floor(capped * playerStore.totalLikesPerSec);
-  return earned.toLocaleString('id-ID');
+  return Math.floor(Math.min(elapsed, 43200) * playerStore.totalLikesPerSec).toLocaleString('id-ID');
 });
 
 async function handleClaim() {
@@ -115,34 +163,25 @@ async function handleClaim() {
     const data = await res.json();
     if (!res.ok) throw data;
     await playerStore.refreshAfterAction();
-    // Show toast (implemented later with toast system)
+    if (data.coinsEarned > 0) toast.success(`+${data.coinsEarned.toLocaleString('id-ID')} coin!`);
   } catch (e) {
-    console.error('Claim failed:', e);
+    toast.error(e.message || 'Gagal klaim.');
   } finally {
     claiming.value = false;
   }
 }
 
 function updateCooldown() {
-  if (!authStore.user?.lastClaimedAt) {
-    cooldownRemaining.value = 0;
-    return;
-  }
+  if (!authStore.user?.lastClaimedAt) { cooldownRemaining.value = 0; return; }
   const elapsed = Math.max(0, Math.floor((Date.now() - new Date(authStore.user.lastClaimedAt).getTime()) / 1000));
   cooldownRemaining.value = Math.max(0, 10 - elapsed);
 }
 
 onMounted(async () => {
-  await Promise.all([
-    playerStore.fetchMasterCards(),
-    playerStore.fetchInventory(),
-    authStore.fetchMe(),
-  ]);
+  await Promise.all([playerStore.fetchMasterCards(), playerStore.fetchInventory(), authStore.fetchMe()]);
   updateCooldown();
   cooldownInterval = setInterval(updateCooldown, 1000);
 });
 
-onBeforeUnmount(() => {
-  if (cooldownInterval) clearInterval(cooldownInterval);
-});
+onBeforeUnmount(() => { if (cooldownInterval) clearInterval(cooldownInterval); });
 </script>

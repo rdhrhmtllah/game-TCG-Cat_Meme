@@ -26,6 +26,15 @@ export const usePlayerStore = defineStore('player', () => {
     return showcase.value.reduce((sum, card) => sum + (card.likesPerSec || 0), 0);
   });
 
+  // Featured card — highest rarity in showcase
+  const featuredCard = computed(() => {
+    if (showcase.value.length === 0) return null;
+    const rarityOrder = { Legendary: 4, Epic: 3, Rare: 2, Common: 1 };
+    return showcase.value.reduce((best, card) =>
+      (rarityOrder[card.rarity] || 0) > (rarityOrder[best.rarity] || 0) ? card : best
+    , showcase.value[0]);
+  });
+
   // Coins
   const coins = computed(() => {
     const authStore = useAuthStore();
@@ -84,6 +93,7 @@ export const usePlayerStore = defineStore('player', () => {
     totalLikesPerSec,
     coins,
     isShowcaseFull,
+    featuredCard,
     fetchMasterCards,
     fetchInventory,
     refreshAfterAction,

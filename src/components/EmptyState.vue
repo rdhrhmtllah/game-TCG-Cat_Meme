@@ -1,20 +1,12 @@
 <template>
   <div class="flex flex-col items-center justify-center py-12 px-4 text-center">
     <div class="text-6xl mb-4" v-if="icon">{{ icon }}</div>
-    <h3 class="text-lg font-semibold text-gray-300 mb-2">{{ title }}</h3>
-    <p class="text-gray-500 text-sm max-w-xs mb-6">{{ message }}</p>
-    <button
-      v-if="ctaLabel && ctaTo"
-      @click="$router.push(ctaTo)"
-      class="btn-primary"
-    >
+    <h3 class="text-lg font-semibold text-text-secondary mb-2">{{ title }}</h3>
+    <p class="text-text-muted text-sm max-w-xs mb-6">{{ message }}</p>
+    <router-link v-if="ctaLabel && ctaTo" :to="ctaTo" class="btn-primary text-sm">
       {{ ctaLabel }}
-    </button>
-    <button
-      v-else-if="ctaLabel && ctaAction"
-      @click="ctaAction"
-      class="btn-primary"
-    >
+    </router-link>
+    <button v-else-if="ctaLabel && ctaAction" @click="ctaAction" class="btn-primary text-sm">
       {{ ctaLabel }}
     </button>
   </div>
