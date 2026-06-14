@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <!-- Mobile: bottom nav bar -->
   <nav class="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-surface-elevated/95 backdrop-blur-md border-t border-white/10 safe-bottom">
     <div class="flex justify-around items-center h-16 px-1">
@@ -6,7 +6,7 @@
         v-for="item in menuItems"
         :key="item.to"
         :to="item.to"
-        class="flex flex-col items-center justify-center gap-0.5 px-2 py-1 rounded-lg text-text-muted hover:text-text-secondary transition-colors relative min-w-[48px]"
+        class="flex flex-col items-center justify-center gap-0.5 px-2 py-1 rounded-lg text-muted hover:text-secondary transition-colors relative min-w-[48px]"
         active-class="!text-accent"
       >
         <IconBase :name="item.icon" :size="20" />
@@ -17,7 +17,7 @@
 
       <button
         @click="handleLogout"
-        class="flex flex-col items-center justify-center gap-0.5 px-2 py-1 rounded-lg text-text-muted hover:text-red-400 transition-colors min-w-[48px]"
+        class="flex flex-col items-center justify-center gap-0.5 px-2 py-1 rounded-lg text-muted hover:text-red-400 transition-colors min-w-[48px]"
         title="Logout"
       >
         <IconBase name="logout" :size="20" />
@@ -38,7 +38,7 @@
           v-for="item in menuItems"
           :key="item.to"
           :to="item.to"
-          class="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium text-text-muted hover:text-text-secondary hover:bg-white/5 transition-all"
+          class="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium text-muted hover:text-secondary hover:bg-white/5 transition-all"
           active-class="!text-accent !bg-accent/10"
         >
           <IconBase :name="item.icon" :size="18" />
@@ -46,7 +46,7 @@
         </router-link>
         <button
           @click="handleLogout"
-          class="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium text-text-muted hover:text-red-400 hover:bg-white/5 transition-all ml-2"
+          class="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium text-muted hover:text-red-400 hover:bg-white/5 transition-all ml-2"
         >
           <IconBase name="logout" :size="18" />
           <span>Logout</span>

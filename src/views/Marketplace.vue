@@ -1,15 +1,15 @@
-<template>
+﻿<template>
   <div class="max-w-2xl mx-auto px-4 py-6">
     <h1 class="text-xl font-bold mb-4">💎 Marketplace</h1>
 
     <!-- Tabs -->
     <div class="flex bg-surface-card rounded-xl p-1 gap-1 mb-4">
       <button @click="activeTab = 'browse'" class="flex-1 py-2 rounded-lg text-sm font-medium transition-all"
-        :class="activeTab === 'browse' ? 'bg-accent text-white shadow-lg' : 'text-text-muted hover:text-text-secondary'">
+        :class="activeTab === 'browse' ? 'bg-accent text-white shadow-lg' : 'text-muted hover:text-secondary'">
         Jelajahi
       </button>
       <button @click="activeTab = 'mine'" class="flex-1 py-2 rounded-lg text-sm font-medium transition-all"
-        :class="activeTab === 'mine' ? 'bg-accent text-white shadow-lg' : 'text-text-muted hover:text-text-secondary'">
+        :class="activeTab === 'mine' ? 'bg-accent text-white shadow-lg' : 'text-muted hover:text-secondary'">
         Listing Saya
       </button>
     </div>
@@ -19,7 +19,7 @@
       <div class="flex gap-2 mb-3 overflow-x-auto pb-1">
         <button v-for="r in filters" :key="r.value" @click="activeRarity = r.value; page = 1"
           class="px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-all border"
-          :class="(activeRarity === r.value) ? r.activeClass : 'border-white/10 text-text-muted hover:border-white/20 hover:text-text-secondary'">
+          :class="(activeRarity === r.value) ? r.activeClass : 'border-white/10 text-muted hover:border-white/20 hover:text-secondary'">
           {{ r.label }}
         </button>
       </div>
@@ -30,8 +30,8 @@
 
       <div v-else-if="listings.length === 0" class="glass-panel p-8 text-center">
         <p class="text-4xl mb-3">💎</p>
-        <p class="text-text-secondary font-medium">Belum ada listing.</p>
-        <p class="text-text-muted text-sm">Jadi yang pertama jual kartu!</p>
+        <p class="text-secondary font-medium">Belum ada listing.</p>
+        <p class="text-muted text-sm">Jadi yang pertama jual kartu!</p>
       </div>
 
       <div v-else class="space-y-3">
@@ -49,8 +49,8 @@
             <span class="rarity-badge text-[10px]" :class="'rarity-' + (listing.card?.rarity || '').toLowerCase()">
               {{ listing.card?.rarity }}
             </span>
-            <p class="text-sm text-text-muted mt-0.5">🪙 {{ listing.price.toLocaleString('id-ID') }}</p>
-            <p class="text-xs text-text-muted">Penjual: {{ listing.seller?.username }}</p>
+            <p class="text-sm text-muted mt-0.5">🪙 {{ listing.price.toLocaleString('id-ID') }}</p>
+            <p class="text-xs text-muted">Penjual: {{ listing.seller?.username }}</p>
           </div>
           <button @click="handleBuy(listing)" :disabled="playerStore.coins < listing.price || buyingId === listing.id"
             class="btn-primary text-sm px-4">
@@ -61,7 +61,7 @@
         <!-- Pagination -->
         <div class="flex justify-center gap-3 mt-4">
           <button @click="page--" :disabled="page <= 1" class="btn-secondary text-sm px-3 py-1.5">←</button>
-          <span class="py-1.5 text-sm text-text-muted">Hal {{ page }}</span>
+          <span class="py-1.5 text-sm text-muted">Hal {{ page }}</span>
           <button @click="page++" :disabled="listings.length < limit" class="btn-secondary text-sm px-3 py-1.5">→</button>
         </div>
       </div>
@@ -71,8 +71,8 @@
     <template v-if="activeTab === 'mine'">
       <div v-if="myListings.length === 0" class="glass-panel p-8 text-center">
         <p class="text-4xl mb-3">📋</p>
-        <p class="text-text-secondary font-medium">Belum ada listing.</p>
-        <p class="text-text-muted text-sm">Jual kartu duplikat dari Binder!</p>
+        <p class="text-secondary font-medium">Belum ada listing.</p>
+        <p class="text-muted text-sm">Jual kartu duplikat dari Binder!</p>
       </div>
 
       <div v-else class="space-y-3">
@@ -84,7 +84,7 @@
           </div>
           <div class="flex-1 min-w-0">
             <p class="font-medium truncate">{{ listing.card?.name }}</p>
-            <p class="text-sm text-text-muted">🪙 {{ listing.price.toLocaleString('id-ID') }}</p>
+            <p class="text-sm text-muted">🪙 {{ listing.price.toLocaleString('id-ID') }}</p>
           </div>
           <button @click="handleCancel(listing)" class="btn-danger text-sm px-4">Batal</button>
         </div>

@@ -1,4 +1,4 @@
-@tailwind base;
+﻿@tailwind base;
 @tailwind components;
 @tailwind utilities;
 
@@ -8,7 +8,8 @@
   }
 
   body {
-    @apply bg-surface text-text-primary;
+    background-color: #0f0f23;
+    color: #F8FAFC;
     font-family: 'Inter', system-ui, -apple-system, sans-serif;
     overscroll-behavior-y: contain;
   }
@@ -73,7 +74,7 @@
            shadow-lg shadow-accent/25;
   }
   .btn-secondary {
-    @apply px-4 py-3 bg-surface-elevated hover:bg-surface-elevated/80 rounded-xl font-semibold text-text-secondary
+    @apply px-4 py-3 bg-surface-elevated hover:bg-surface-elevated/80 rounded-xl font-semibold text-secondary
            disabled:opacity-40 disabled:cursor-not-allowed
            active:scale-[0.97] transition-all duration-150;
   }

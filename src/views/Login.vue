@@ -1,23 +1,23 @@
-<template>
+﻿<template>
   <div class="min-h-screen flex items-center justify-center px-4 bg-surface">
     <div class="glass-panel p-8 w-full max-w-sm animate-scale-in">
       <div class="text-center mb-6">
         <span class="text-4xl">🐱</span>
         <h1 class="text-2xl font-bold mt-2">MemeCats</h1>
-        <p class="text-text-muted text-sm mt-1">Login untuk melanjutkan koleksi</p>
+        <p class="text-muted text-sm mt-1">Login untuk melanjutkan koleksi</p>
       </div>
 
       <form @submit.prevent="handleLogin" class="space-y-4">
         <div>
-          <label class="block text-sm font-medium text-text-secondary mb-1.5">Username</label>
+          <label class="block text-sm font-medium text-secondary mb-1.5">Username</label>
           <input v-model="username" type="text" autocomplete="username"
-            class="w-full px-3 py-2.5 bg-surface-card border border-white/10 rounded-xl text-white placeholder-text-muted focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent transition-all"
+            class="w-full px-3 py-2.5 bg-surface-card border border-white/10 rounded-xl text-white placeholder-muted focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent transition-all"
             placeholder="Username kamu" required />
         </div>
         <div>
-          <label class="block text-sm font-medium text-text-secondary mb-1.5">Password</label>
+          <label class="block text-sm font-medium text-secondary mb-1.5">Password</label>
           <input v-model="password" type="password" autocomplete="current-password"
-            class="w-full px-3 py-2.5 bg-surface-card border border-white/10 rounded-xl text-white placeholder-text-muted focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent transition-all"
+            class="w-full px-3 py-2.5 bg-surface-card border border-white/10 rounded-xl text-white placeholder-muted focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent transition-all"
             placeholder="••••••••" required />
         </div>
 
@@ -30,7 +30,7 @@
         </button>
       </form>
 
-      <p class="text-center text-sm text-text-muted mt-4">
+      <p class="text-center text-sm text-muted mt-4">
         Belum punya akun?
         <router-link to="/register" class="text-accent hover:text-accent/80 font-medium">Daftar</router-link>
       </p>

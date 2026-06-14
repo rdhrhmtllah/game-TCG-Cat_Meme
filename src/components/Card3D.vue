@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div
     ref="containerRef"
     class="w-full h-full relative"
@@ -15,7 +15,7 @@
       class="absolute inset-0 z-10 flex items-center justify-center rounded-xl overflow-hidden"
     >
       <div class="w-full h-full animate-shimmer bg-gradient-to-r from-gray-800 via-gray-700 to-gray-800 bg-[length:200%_100%]" />
-      <span class="absolute text-text-muted text-xs">Loading...</span>
+      <span class="absolute text-muted text-xs">Loading...</span>
     </div>
   </div>
 </template>

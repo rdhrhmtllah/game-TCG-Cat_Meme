@@ -1,18 +1,18 @@
-<template>
+﻿<template>
   <div class="max-w-4xl mx-auto px-4 py-6">
     <div class="flex items-center justify-between mb-4">
       <h1 class="text-xl font-bold">📒 Binder</h1>
-      <span class="text-sm text-text-muted">{{ filteredInventory.length }} kartu</span>
+      <span class="text-sm text-muted">{{ filteredInventory.length }} kartu</span>
     </div>
 
     <!-- View Toggle -->
     <div class="flex mb-3 bg-surface-card rounded-xl p-1 gap-1">
       <button @click="showAll = false" class="flex-1 py-2 rounded-lg text-sm font-medium transition-all"
-        :class="!showAll ? 'bg-accent text-white shadow-lg' : 'text-text-muted hover:text-text-secondary'">
+        :class="!showAll ? 'bg-accent text-white shadow-lg' : 'text-muted hover:text-secondary'">
         Milikku
       </button>
       <button @click="showAll = true" class="flex-1 py-2 rounded-lg text-sm font-medium transition-all"
-        :class="showAll ? 'bg-accent text-white shadow-lg' : 'text-text-muted hover:text-text-secondary'">
+        :class="showAll ? 'bg-accent text-white shadow-lg' : 'text-muted hover:text-secondary'">
         Semua Kartu
       </button>
     </div>
@@ -23,7 +23,7 @@
         class="px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-all border"
         :class="(activeRarity === r.value)
           ? r.activeClass
-          : 'border-white/10 text-text-muted hover:border-white/20 hover:text-text-secondary'">
+          : 'border-white/10 text-muted hover:border-white/20 hover:text-secondary'">
         {{ r.label }}
       </button>
     </div>
@@ -32,10 +32,10 @@
     <div v-if="displayCards.length === 0">
       <div class="glass-panel p-8 text-center">
         <p class="text-4xl mb-3">📭</p>
-        <p class="text-text-secondary font-medium mb-1">
+        <p class="text-secondary font-medium mb-1">
           {{ showAll ? 'Belum ada kartu dalam game.' : 'Kamu belum punya kartu.' }}
         </p>
-        <p class="text-text-muted text-sm mb-4">
+        <p class="text-muted text-sm mb-4">
           {{ showAll ? 'Admin akan menambahkan kartu segera!' : 'Yuk buka pack pertamamu!' }}
         </p>
         <router-link v-if="!showAll" to="/gacha" class="btn-primary text-sm">🎴 Buka Gacha</router-link>
@@ -94,7 +94,7 @@
                   {{ selectedCard.card?.rarity }}
                 </span>
               </div>
-              <button @click="closeDetail" class="text-text-muted hover:text-white p-1">
+              <button @click="closeDetail" class="text-muted hover:text-white p-1">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
               </button>
             </div>
@@ -109,22 +109,22 @@
                 class="w-full h-full cursor-pointer"
               />
             </div>
-            <p class="text-xs text-center text-text-muted -mt-2">👆 Tap kartu untuk flip</p>
+            <p class="text-xs text-center text-muted -mt-2">👆 Tap kartu untuk flip</p>
 
             <!-- Stats -->
             <div class="grid grid-cols-2 gap-2 px-4 pb-4 text-center text-sm">
               <div class="glass-panel p-2">
-                <p class="text-text-muted text-xs">Hype</p>
+                <p class="text-muted text-xs">Hype</p>
                 <p class="font-bold">{{ selectedCard.card?.hypeScore }}</p>
               </div>
               <div class="glass-panel p-2">
-                <p class="text-text-muted text-xs">Likes/dtk</p>
+                <p class="text-muted text-xs">Likes/dtk</p>
                 <p class="font-bold">{{ selectedCard.card?.likesPerSec }}</p>
               </div>
             </div>
 
             <!-- Description -->
-            <p class="px-4 text-sm text-text-secondary">{{ selectedCard.card?.description }}</p>
+            <p class="px-4 text-sm text-secondary">{{ selectedCard.card?.description }}</p>
 
             <!-- Actions -->
             <div class="p-4 space-y-2">
@@ -143,7 +143,7 @@
               </button>
 
               <div v-if="showMarketForm" class="space-y-2 p-3 bg-surface-card rounded-xl">
-                <p class="text-xs text-text-muted">
+                <p class="text-xs text-muted">
                   Range: {{ Math.floor(selectedCard.card?.hypeScore * 0.5) }} – {{ Math.floor(selectedCard.card?.hypeScore * 5) }} coin
                 </p>
                 <input v-model="marketPrice" type="number"

@@ -1,8 +1,8 @@
-<template>
+﻿<template>
   <div class="flex flex-col items-center justify-center py-12 px-4 text-center">
     <div class="text-6xl mb-4" v-if="icon">{{ icon }}</div>
-    <h3 class="text-lg font-semibold text-text-secondary mb-2">{{ title }}</h3>
-    <p class="text-text-muted text-sm max-w-xs mb-6">{{ message }}</p>
+    <h3 class="text-lg font-semibold text-secondary mb-2">{{ title }}</h3>
+    <p class="text-muted text-sm max-w-xs mb-6">{{ message }}</p>
     <router-link v-if="ctaLabel && ctaTo" :to="ctaTo" class="btn-primary text-sm">
       {{ ctaLabel }}
     </router-link>

@@ -1,10 +1,10 @@
-<template>
+﻿<template>
   <div class="max-w-xl mx-auto px-4 py-6">
     <!-- Header -->
     <div class="flex items-center justify-between mb-6">
       <div>
         <h1 class="text-2xl font-bold">MemeCats</h1>
-        <p class="text-text-muted text-sm">{{ authStore.user?.username }}</p>
+        <p class="text-muted text-sm">{{ authStore.user?.username }}</p>
       </div>
       <CoinDisplay :amount="playerStore.coins" size="lg" />
     </div>
@@ -22,7 +22,7 @@
       <div v-else class="w-full h-full glass-panel flex flex-col items-center justify-center text-center p-6">
         <span class="text-6xl mb-4">🌟</span>
         <h3 class="text-lg font-semibold mb-2">Mulai Koleksimu!</h3>
-        <p class="text-text-muted text-sm mb-4">Buka pack pertamamu dan tampilkan kartu terbaik di showcase.</p>
+        <p class="text-muted text-sm mb-4">Buka pack pertamamu dan tampilkan kartu terbaik di showcase.</p>
         <router-link to="/gacha" class="btn-primary text-sm">🎴 Buka Pack</router-link>
       </div>
     </div>
@@ -37,27 +37,27 @@
     <!-- Collection Progress -->
     <div class="glass-panel p-4 mb-4">
       <div class="flex items-center justify-between mb-2">
-        <span class="text-sm text-text-secondary">📚 Card Dex</span>
+        <span class="text-sm text-secondary">📚 Card Dex</span>
         <span class="text-sm font-semibold">
-          {{ playerStore.totalCardsOwned }}<span class="text-text-muted">/{{ playerStore.totalCardsInGame }}</span>
+          {{ playerStore.totalCardsOwned }}<span class="text-muted">/{{ playerStore.totalCardsInGame }}</span>
         </span>
       </div>
       <div class="w-full h-2.5 bg-surface rounded-full overflow-hidden">
         <div class="h-full bg-gradient-to-r from-accent via-epic to-legendary rounded-full transition-all duration-700"
           :style="{ width: playerStore.dexProgress + '%' }" />
       </div>
-      <p class="text-xs text-text-muted mt-1.5">{{ playerStore.dexProgress }}% koleksi terlengkapi</p>
+      <p class="text-xs text-muted mt-1.5">{{ playerStore.dexProgress }}% koleksi terlengkapi</p>
     </div>
 
     <!-- Idle Economy -->
     <div class="glass-panel p-4 mb-4">
       <div class="flex items-center justify-between">
         <div>
-          <p class="text-sm text-text-muted flex items-center gap-1">
+          <p class="text-sm text-muted flex items-center gap-1">
             <span>⚡</span> Yield Pasif
           </p>
           <p class="text-lg font-bold text-emerald-400">{{ idleEstimate }} coin</p>
-          <p class="text-xs text-text-muted">{{ playerStore.totalLikesPerSec.toFixed(1) }} likes/detik</p>
+          <p class="text-xs text-muted">{{ playerStore.totalLikesPerSec.toFixed(1) }} likes/detik</p>
         </div>
         <button
           @click="handleClaim"
@@ -77,32 +77,32 @@
       <router-link to="/binder" class="glass-panel p-4 text-center card-hover">
         <p class="text-2xl mb-1">📒</p>
         <p class="text-sm font-medium">Binder</p>
-        <p class="text-xs text-text-muted">{{ playerStore.inventory.length }} kartu</p>
+        <p class="text-xs text-muted">{{ playerStore.inventory.length }} kartu</p>
       </router-link>
       <router-link to="/gacha" class="glass-panel p-4 text-center card-hover">
         <p class="text-2xl mb-1">🎴</p>
         <p class="text-sm font-medium">Buka Pack</p>
-        <p class="text-xs text-text-muted">100 coin</p>
+        <p class="text-xs text-muted">100 coin</p>
       </router-link>
       <router-link to="/market" class="glass-panel p-4 text-center card-hover">
         <p class="text-2xl mb-1">💎</p>
         <p class="text-sm font-medium">Market</p>
-        <p class="text-xs text-text-muted">Jual & Beli</p>
+        <p class="text-xs text-muted">Jual & Beli</p>
       </router-link>
       <div class="glass-panel p-4 text-center card-hover cursor-pointer" @click="$router.push('/binder')">
         <p class="text-2xl mb-1">⭐</p>
         <p class="text-sm font-medium">Showcase</p>
-        <p class="text-xs text-text-muted">{{ playerStore.showcase.length }}/5 slot</p>
+        <p class="text-xs text-muted">{{ playerStore.showcase.length }}/5 slot</p>
       </div>
     </div>
 
     <!-- Showcase Grid -->
     <div>
-      <h2 class="text-sm font-semibold text-text-secondary mb-3 flex items-center gap-2">
-        🌟 Showcase <span class="text-text-muted font-normal">{{ playerStore.showcase.length }}/5</span>
+      <h2 class="text-sm font-semibold text-secondary mb-3 flex items-center gap-2">
+        🌟 Showcase <span class="text-muted font-normal">{{ playerStore.showcase.length }}/5</span>
       </h2>
       <div v-if="playerStore.showcase.length === 0">
-        <div class="glass-panel p-6 text-center text-text-muted text-sm">
+        <div class="glass-panel p-6 text-center text-muted text-sm">
           <p class="mb-2">Showcase kosong — isi dengan kartu dari Binder!</p>
           <router-link to="/binder" class="text-accent text-xs hover:underline">Buka Binder →</router-link>
         </div>

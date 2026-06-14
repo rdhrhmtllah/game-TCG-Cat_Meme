@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="max-w-lg mx-auto px-4 py-6">
     <!-- Header -->
     <div class="flex items-center justify-between mb-4">
@@ -18,7 +18,7 @@
       <div class="glass-panel p-4 mb-4" style="min-height: 360px;">
         <GachaPack ref="packRef" :shaking="false" :tearing="false" />
       </div>
-      <p class="text-center text-text-muted text-sm mb-4">Drag pack untuk melihat-lihat. 1 Pack = 100 🪙</p>
+      <p class="text-center text-muted text-sm mb-4">Drag pack untuk melihat-lihat. 1 Pack = 100 🪙</p>
       <button @click="startOpening" :disabled="playerStore.coins < 100"
         class="btn-primary w-full py-4 text-lg">
         <template v-if="playerStore.coins < 100">Koin tidak cukup (100 🪙)</template>
@@ -69,7 +69,7 @@
         <span class="rarity-badge mb-3" :class="'rarity-' + revealedCard.rarity.toLowerCase()">
           {{ revealedCard.rarity }}
         </span>
-        <p class="text-text-secondary text-sm mb-4">{{ revealedCard.description }}</p>
+        <p class="text-secondary text-sm mb-4">{{ revealedCard.description }}</p>
         <div class="flex items-center justify-center gap-4 text-sm mb-4">
           <span class="glass-panel px-3 py-1.5">🔥 Hype {{ revealedCard.hypeScore }}</span>
           <span class="glass-panel px-3 py-1.5">⚡ {{ revealedCard.likesPerSec }}/detik</span>
@@ -88,7 +88,7 @@
 
     <!-- Coin not enough banner -->
     <div v-if="playerStore.coins < 100 && step === 'idle'"
-      class="mt-4 p-3 glass-panel border-red-500/30 text-sm text-text-secondary text-center">
+      class="mt-4 p-3 glass-panel border-red-500/30 text-sm text-secondary text-center">
       Koin tidak cukup. Claim koin pasif dari Dashboard atau jual kartu duplikat di Market!
     </div>
   </div>

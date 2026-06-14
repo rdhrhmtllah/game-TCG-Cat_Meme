@@ -25,25 +25,19 @@ export default {
           light: '#FCD34D',
           dark: '#F59E0B',
         },
-        // Surface colors — Pokémon TCG-style deep navy
-        surface: {
-          DEFAULT: '#0f0f23',
-          card: '#1a1a3e',
-          elevated: '#252550',
-          overlay: 'rgba(15, 15, 35, 0.85)',
-        },
+        // Surface colors — Pokémon TCG-style deep navy (flat keys for @apply)
+        'surface': '#0f0f23',
+        'surface-card': '#1a1a3e',
+        'surface-elevated': '#252550',
+        'surface-overlay': 'rgba(15, 15, 35, 0.85)',
         // Accent colors
-        accent: {
-          DEFAULT: '#7C3AED',
-          soft: '#A78BFA',
-          glow: '#8B5CF6',
-        },
+        'accent': '#7C3AED',
+        'accent-soft': '#A78BFA',
+        'accent-glow': '#8B5CF6',
         // Text colors
-        text: {
-          primary: '#F8FAFC',
-          secondary: '#94A3B8',
-          muted: '#64748B',
-        },
+        'primary': '#F8FAFC',
+        'secondary': '#94A3B8',
+        'muted': '#64748B',
       },
       fontFamily: {
         sans: ['Inter', 'system-ui', '-apple-system', 'sans-serif'],
