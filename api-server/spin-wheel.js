@@ -1,6 +1,6 @@
 import { db } from './db/client.js';
 import { users } from './db/schema.js';
-import { eq } from 'drizzle-orm';
+import { eq, and, or, ne, isNull, sql } from 'drizzle-orm';
 import requireAuth from './_lib/requireAuth.js';
 import { sendError } from './_lib/errors.js';
 import { checkRateLimit } from './_lib/rateLimit.js';
@@ -56,28 +56,32 @@ export default requireAuth(async function handler(req, res) {
 
   try {
     const result = await db.transaction(async (tx) => {
-      const [user] = await tx.select({ coins: users.coins, lastSpinDate: users.lastSpinDate })
+      const [user] = await tx.select({ lastSpinDate: users.lastSpinDate })
         .from(users).where(eq(users.id, req.userId));
 
       if (!user) throw { status: 404, code: 'NOT_FOUND', message: 'User not found' };
 
       const today = new Date().toISOString().split('T')[0];
-      if (user.lastSpinDate === today) {
+      const prize = spinWheel();
+
+      // Klaim spin harian secara atomik: cek lastSpinDate di UPDATE yang sama
+      // supaya dua request bersamaan tidak bisa double-spin
+      const [updated] = await tx.update(users).set({
+        coins: sql`${users.coins} + ${prize.amount}`,
+        lastSpinDate: today,
+      }).where(and(
+        eq(users.id, req.userId),
+        or(isNull(users.lastSpinDate), ne(users.lastSpinDate, today)),
+      )).returning({ coins: users.coins });
+
+      if (!updated) {
         throw { status: 400, code: 'ALREADY_SPUN', message: 'Kamu sudah spin hari ini! Coba lagi besok.' };
       }
-
-      const prize = spinWheel();
-      const newCoins = user.coins + prize.amount;
-
-      await tx.update(users).set({
-        coins: newCoins,
-        lastSpinDate: today,
-      }).where(eq(users.id, req.userId));
 
       // Determine prize index for wheel animation
       const prizeIndex = PRIZES.findIndex(p => p.amount === prize.amount);
 
-      return { prize, prizeIndex, coins: newCoins };
+      return { prize, prizeIndex, coins: updated.coins };
     });
 
     return res.status(200).json(result);

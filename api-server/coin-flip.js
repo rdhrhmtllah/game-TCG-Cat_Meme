@@ -1,6 +1,6 @@
 import { db } from './db/client.js';
 import { users, coinFlipHistory } from './db/schema.js';
-import { eq } from 'drizzle-orm';
+import { eq, and, gte, sql } from 'drizzle-orm';
 import requireAuth from './_lib/requireAuth.js';
 import { sendError } from './_lib/errors.js';
 import { checkRateLimit } from './_lib/rateLimit.js';
@@ -37,15 +37,21 @@ export default requireAuth(async function handler(req, res) {
         .from(users).where(eq(users.id, req.userId));
 
       if (!user) throw { status: 404, code: 'NOT_FOUND', message: 'User not found' };
-      if (user.coins < betAmount) throw { status: 400, code: 'INSUFFICIENT_FUNDS', message: 'Koin tidak cukup untuk taruhan.' };
 
       // Flip the coin
       const flipResult = Math.random() < 0.5 ? 'heads' : 'tails';
       const won = flipResult === choice;
       const coinChange = won ? betAmount : -betAmount;
-      const newCoins = user.coins + coinChange;
 
-      await tx.update(users).set({ coins: newCoins }).where(eq(users.id, req.userId));
+      // Update atomik + syarat saldo >= taruhan di UPDATE yang sama
+      // (race-safe: dua bet bersamaan tidak bisa taruhan dengan koin yang sama)
+      const [updated] = await tx.update(users)
+        .set({ coins: sql`${users.coins} + ${coinChange}` })
+        .where(and(eq(users.id, req.userId), gte(users.coins, betAmount)))
+        .returning({ coins: users.coins });
+
+      if (!updated) throw { status: 400, code: 'INSUFFICIENT_FUNDS', message: 'Koin tidak cukup untuk taruhan.' };
+      const newCoins = updated.coins;
 
       // Audit log
       await tx.insert(coinFlipHistory).values({

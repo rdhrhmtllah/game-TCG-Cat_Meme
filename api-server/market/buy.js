@@ -1,6 +1,6 @@
 import { db } from '../db/client.js';
 import { users, userInventory, marketplaceListings, masterCards } from '../db/schema.js';
-import { eq, and, sql } from 'drizzle-orm';
+import { eq, and, gte, sql } from 'drizzle-orm';
 import requireAuth from '../_lib/requireAuth.js';
 import { marketBuySchema } from '../_lib/schemas.js';
 import { sendError, logError } from '../_lib/errors.js';
@@ -91,15 +91,29 @@ export default requireAuth(async function handler(req, res) {
       const tax = Math.floor(listing.price * TAX_RATE);
       const sellerEarnings = listing.price - tax;
 
-      // Update listing → sold
-      await tx.update(marketplaceListings)
+      // Klaim listing secara atomik: hanya satu buyer yang bisa mengubah
+      // active → sold (race-safe untuk dua pembeli bersamaan)
+      const [claimed] = await tx.update(marketplaceListings)
         .set({ status: 'sold' })
-        .where(eq(marketplaceListings.id, listingId));
+        .where(and(
+          eq(marketplaceListings.id, listingId),
+          eq(marketplaceListings.status, 'active'),
+        ))
+        .returning({ id: marketplaceListings.id });
 
-      // Kurangi coin buyer
-      await tx.update(users)
-        .set({ coins: buyer.coins - listing.price })
-        .where(eq(users.id, req.userId));
+      if (!claimed) {
+        throw { status: 409, code: 'MARKET_CONFLICT', message: 'Kartu sudah terjual atau dibatalkan.' };
+      }
+
+      // Kurangi coin buyer secara atomik + syarat saldo cukup
+      const [debited] = await tx.update(users)
+        .set({ coins: sql`${users.coins} - ${listing.price}` })
+        .where(and(eq(users.id, req.userId), gte(users.coins, listing.price)))
+        .returning({ coins: users.coins });
+
+      if (!debited) {
+        throw { status: 400, code: 'INSUFFICIENT_FUNDS', message: 'Koin tidak cukup untuk membeli kartu ini.' };
+      }
 
       // Tambah coin seller
       await tx.update(users)

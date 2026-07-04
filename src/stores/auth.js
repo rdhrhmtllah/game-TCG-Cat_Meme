@@ -1,11 +1,23 @@
 import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
 
+const TOKEN_KEY = 'memecats_token';
+
 export const useAuthStore = defineStore('auth', () => {
-  const token = ref(null);
+  // Hydrate dari localStorage supaya refresh halaman tidak logout paksa
+  const token = ref(localStorage.getItem(TOKEN_KEY) || null);
   const user = ref(null);
 
   const isLoggedIn = computed(() => !!token.value);
+
+  function setToken(value) {
+    token.value = value;
+    if (value) {
+      localStorage.setItem(TOKEN_KEY, value);
+    } else {
+      localStorage.removeItem(TOKEN_KEY);
+    }
+  }
 
   // Safe JSON parser — handles empty responses (e.g. backend down)
   async function safeJson(res) {
@@ -29,7 +41,7 @@ export const useAuthStore = defineStore('auth', () => {
     });
     const data = await safeJson(res);
     if (!res.ok) throw data;
-    token.value = data.token;
+    setToken(data.token);
     user.value = data.user;
     return data;
   }
@@ -42,7 +54,7 @@ export const useAuthStore = defineStore('auth', () => {
     });
     const data = await safeJson(res);
     if (!res.ok) throw data;
-    token.value = data.token;
+    setToken(data.token);
     user.value = data.user;
     return data;
   }
@@ -53,7 +65,8 @@ export const useAuthStore = defineStore('auth', () => {
       headers: { Authorization: `Bearer ${token.value}` },
     });
     if (!res.ok) {
-      token.value = null;
+      // Token invalid/expired — bersihkan sesi tersimpan
+      setToken(null);
       user.value = null;
       return null;
     }
@@ -63,7 +76,7 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   function logout() {
-    token.value = null;
+    setToken(null);
     user.value = null;
   }
 

@@ -1,6 +1,6 @@
 import { db } from './db/client.js';
 import { users, masterCards, userInventory } from './db/schema.js';
-import { eq, and, sql } from 'drizzle-orm';
+import { eq, and, gte, sql } from 'drizzle-orm';
 import requireAuth from './_lib/requireAuth.js';
 import { sendError, logError } from './_lib/errors.js';
 import { checkRateLimit } from './_lib/rateLimit.js';
@@ -48,7 +48,6 @@ export default requireAuth(async function handler(req, res) {
 
   try {
     const result = await db.transaction(async (tx) => {
-      // Lock baris user
       const [user] = await tx.select({ coins: users.coins, createdAt: users.createdAt })
         .from(users)
         .where(eq(users.id, req.userId))
@@ -58,15 +57,17 @@ export default requireAuth(async function handler(req, res) {
         throw { status: 404, code: 'NOT_FOUND', message: 'User tidak ditemukan.' };
       }
 
-      // Cek saldo cukup
-      if (user.coins < GACHA_COST) {
+      // Kurangi coin secara atomik + bersyarat (race-safe: dua request
+      // bersamaan tidak bisa double-spend karena cek saldo terjadi di
+      // UPDATE yang sama, bukan read-then-write)
+      const [debited] = await tx.update(users)
+        .set({ coins: sql`${users.coins} - ${GACHA_COST}` })
+        .where(and(eq(users.id, req.userId), gte(users.coins, GACHA_COST)))
+        .returning({ coins: users.coins });
+
+      if (!debited) {
         throw { status: 400, code: 'INSUFFICIENT_FUNDS', message: 'Koin tidak cukup! Butuh 100 coin untuk buka pack.' };
       }
-
-      // Kurangi coin
-      await tx.update(users)
-        .set({ coins: user.coins - GACHA_COST })
-        .where(eq(users.id, req.userId));
 
       // Determine account bound status
       const userCreatedAt = new Date(user.createdAt).getTime();
@@ -150,7 +151,7 @@ export default requireAuth(async function handler(req, res) {
         cardsDrawn,
         cardDrawn: bestCard, // backward compat
         highestRarity: bestCard.rarity,
-        coinsRemaining: user.coins - GACHA_COST,
+        coinsRemaining: debited.coins,
       };
     });
 
