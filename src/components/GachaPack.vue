@@ -1,16 +1,21 @@
 <template>
   <div ref="containerRef" class="w-full relative" style="height: 100%; touch-action: none;"
     @mousedown="onDragStart" @mousemove="onDragMove" @mouseup="onDragEnd" @mouseleave="onDragEnd"
-    @touchstart.prevent="onTouchStart" @touchmove.prevent="onTouchMove" @touchend="onDragEnd"
+    @touchstart.prevent="onTouchStart" @touchmove.prevent="onTouchMove" @touchend="onTouchEnd"
   >
     <!-- Vignette overlay -->
     <div
       class="absolute inset-0 z-10 pointer-events-none transition-opacity duration-500 rounded-xl"
       :style="{
-        opacity: shaking || tearMode ? 1 : 0,
+        opacity: shaking || tearMode || selectMode ? 1 : 0,
         background: 'radial-gradient(ellipse at center, transparent 30%, rgba(7, 11, 26, 0.7) 100%)',
       }"
     />
+
+    <!-- Hint pilih pack (carousel) -->
+    <div v-if="selectMode && !focusedPack" class="absolute bottom-3 left-1/2 -translate-x-1/2 z-30 pointer-events-none w-full text-center">
+      <p class="text-xs font-display text-legendary/90 animate-pulse">✨ Geser untuk memutar • Tap pack pilihanmu</p>
+    </div>
 
     <!-- Tear progress indicator -->
     <div v-if="tearMode && !tearing" class="absolute bottom-4 left-1/2 -translate-x-1/2 z-30 pointer-events-none">
@@ -34,14 +39,14 @@
     <!-- Tear glow particles leaking from the opening (top strip line) -->
     <div v-if="tearMode && tearProgressPercent > 0.2"
       class="absolute inset-0 z-20 pointer-events-none">
-      <span v-for="i in 12" :key="'tp'+i"
+      <span v-for="i in 14" :key="'tp'+i"
         class="absolute text-xs"
         :style="{
-          left: (20 + tearProgressPercent * 55 + Math.sin(i * 0.9) * 8) + '%',
-          top: (24 + Math.cos(i * 0.7) * 5) + '%',
-          opacity: tearProgressPercent * 0.85,
-          color: ['#FCD34D','#C084FC','#7DD3FC','#F59E0B','#A855F7'][i % 5],
-          transform: `scale(${0.4 + tearProgressPercent * 0.9})`,
+          left: (18 + tearProgressPercent * 58 + Math.sin(i * 0.9) * 8) + '%',
+          top: (22 + Math.cos(i * 0.7) * 6) + '%',
+          opacity: tearProgressPercent * 0.9,
+          color: ['#FCD34D','#FEF08A','#F59E0B','#FBBF24','#FFF7D6'][i % 5],
+          transform: `scale(${0.4 + tearProgressPercent * 1.1})`,
           transition: 'all 0.1s ease',
         }"
       >✦</span>
@@ -50,19 +55,19 @@
     <!-- Screen flash for tear completion -->
     <div v-if="tearing"
       class="absolute inset-0 z-40 pointer-events-none rounded-xl"
-      :style="{ opacity: flashOpacity, background: 'radial-gradient(circle at center, white 0%, rgba(124, 58, 237, 0.5) 50%, transparent 80%)' }"
+      :style="{ opacity: flashOpacity, background: 'radial-gradient(circle at center, white 0%, rgba(252, 211, 77, 0.55) 45%, transparent 80%)' }"
     />
 
     <!-- Sparkle burst on tear completion -->
     <div v-if="tearing" class="absolute inset-0 z-30 pointer-events-none flex items-center justify-center">
-      <span v-for="i in 16" :key="'s'+i"
+      <span v-for="i in 22" :key="'s'+i"
         class="absolute text-sm animate-sparkle"
         :style="{
-          left: 25 + Math.sin(i * 0.393) * 25 + '%',
-          top: 25 + Math.cos(i * 0.393) * 25 + '%',
-          animationDelay: (i * 0.04) + 's',
-          color: ['#FCD34D','#C084FC','#7DD3FC','#F59E0B','#A855F7','#38BDF8'][i % 6],
-          fontSize: (8 + Math.random() * 8) + 'px',
+          left: 25 + Math.sin(i * 0.286) * (18 + (i % 3) * 9) + '%',
+          top: 25 + Math.cos(i * 0.286) * (18 + (i % 3) * 9) + '%',
+          animationDelay: (i * 0.035) + 's',
+          color: ['#FCD34D','#FEF08A','#F59E0B','#FBBF24','#FFFBEB','#C084FC'][i % 6],
+          fontSize: (8 + Math.random() * 10) + 'px',
         }"
       >✦</span>
     </div>
@@ -71,37 +76,42 @@
     <div v-if="shaking"
       class="absolute inset-0 z-5 pointer-events-none flex items-center justify-center">
       <div class="w-40 h-40 rounded-full animate-energy-pulse"
-        style="background: radial-gradient(circle, rgba(124, 58, 237, 0.2) 0%, transparent 70%);"></div>
+        style="background: radial-gradient(circle, rgba(245, 158, 11, 0.22) 0%, transparent 70%);"></div>
     </div>
   </div>
 </template>
 
 <script setup>
 import { ref, watch, onMounted, onBeforeUnmount, nextTick } from 'vue';
+import * as THREE from 'three';
 import { getQualityConfig } from '@/utils/quality.js';
 import { createEnvironmentTexture } from '@/utils/threeEnv.js';
+import { ensureFontsLoaded } from '@/utils/fonts.js';
 
 const quality = getQualityConfig();
-import * as THREE from 'three';
 
 const props = defineProps({
   tearing: { type: Boolean, default: false },
   shaking: { type: Boolean, default: false },
-  tearMode: { type: Boolean, default: false }, // Enable interactive tear
+  tearMode: { type: Boolean, default: false },   // Enable interactive tear
+  selectMode: { type: Boolean, default: false }, // Carousel pilih pack (spin transition)
 });
 
-const emit = defineEmits(['tear-drag-complete', 'tear-animation-complete', 'tear-progress']);
+const emit = defineEmits(['tear-drag-complete', 'tear-animation-complete', 'tear-progress', 'pack-selected']);
 
 const containerRef = ref(null);
 const flashOpacity = ref(0);
 const tearProgressPercent = ref(0);
+const focusedPack = ref(false); // true saat pack pilihan sedang di-zoom
 
-let scene, camera, renderer, packGroup;
-let packTopHalf, packBottomHalf, packWhole;
+let scene, camera, renderer;
+let packGroup = null;                 // group pack aktif (idle & tear)
+let packWhole, packTopHalf, packBottomHalf, leakMesh;
 let envTexture = null;
 let animationId = null;
 let isInViewport = true;
 let intersectionObserver = null;
+let resizeObserver = null;
 let isDragging = false;
 let isTearDragging = false;
 let prevMouse = { x: 0, y: 0 };
@@ -109,622 +119,627 @@ let tearStartX = 0;
 let rotationVelocity = { x: 0, y: 0 };
 let packRotation = { x: 0, y: 0 };
 let tearProgress = 0;
+let tearP = 0;          // progress sobek TER-SMOOTH (lerp) — anti kaku
 let shakeIntensity = 0;
 let initRetries = 0;
+let lastFrameTime = 0;
+let baseCamZ = 5;
+
+// Easing untuk journey sobekan
+const clamp01 = (v) => Math.max(0, Math.min(1, v));
+const easeOutCubic = (t) => 1 - Math.pow(1 - t, 3);
+const easeInCubic = (t) => t * t * t;
+const easeOutQuad = (t) => 1 - (1 - t) * (1 - t);
+const disposables = []; // geometry/material/texture yang harus di-dispose
 
 const TEAR_THRESHOLD = ('ontouchstart' in window || navigator.maxTouchPoints > 0) ? 80 : 120;
-const PACK_W = 1.7, PACK_H = 2.4, PACK_D = 0.30; // 50% thicker than before (was 0.20)
 
 // ═══════════════════════════════════════════════════════════════
-// TEXTURE FACTORY — 6 unique faces for a realistic booster pack
+// DIMENSI POUCH (bungkus foil, BUKAN kotak)
 // ═══════════════════════════════════════════════════════════════
+const PACK_W = 1.72, PACK_H = 2.98; // ramping & jangkung seperti foil pack asli
+const CORE_D = 0.04;    // ketebalan inti wrapper — tipis, sleek
+const BULGE = 0.06;     // gembungan halus saja (jangan gendut)
+const CRIMP = 0.27;     // tinggi zona crimp seal atas & bawah
+const TEETH = 12;       // jumlah gerigi zigzag di tepi crimp
+const TOOTH_H = 0.032;
+const STRIP_H = 0.44;   // tinggi strip sobekan atas (termasuk crimp)
+const TEAR_Y = PACK_H / 2 - STRIP_H; // garis sobek (koordinat pack)
 
-const TEX_W = 512, TEX_H = 720;
-const CRIMP_H = 64; // height of the crimp seal strip at top
+// ═══════════════════════════════════════════════════════════════
+// TEXTURE — desain hitam-emas ala referensi:
+// foil matte gelap + grid halus, frame emas tipis, emblem kucing
+// mahkota dalam lingkaran emas, wordmark MEMECATS emas
+// ═══════════════════════════════════════════════════════════════
+const TEX_W = 512, TEX_H = 888; // aspek disamakan dgn PACK_W/PACK_H (0.577)
+const CRIMP_PX = Math.round((CRIMP / PACK_H) * TEX_H);
 
-// Shared golden border gradient (used by front & back)
-function goldBorderGrad(ctx, w, h) {
-  const g = ctx.createLinearGradient(0, 0, w, h);
-  g.addColorStop(0, '#92400E');
-  g.addColorStop(0.25, '#FCD34D');
-  g.addColorStop(0.5, '#FEF9C3');
-  g.addColorStop(0.75, '#FCD34D');
-  g.addColorStop(1, '#92400E');
+function goldGrad(ctx, x0, y0, x1, y1) {
+  const g = ctx.createLinearGradient(x0, y0, x1, y1);
+  g.addColorStop(0, '#8A5A0B');
+  g.addColorStop(0.3, '#FCD34D');
+  g.addColorStop(0.5, '#FEF3C7');
+  g.addColorStop(0.7, '#FCD34D');
+  g.addColorStop(1, '#8A5A0B');
   return g;
 }
 
-// Shared holo-sheen stripes
-function drawHoloStripes(ctx, w, h) {
+// Emblem kucing mahkota (wink) dalam lingkaran emas — pusat desain
+function drawGoldCatEmblem(ctx, cx, cy, R) {
   ctx.save();
-  ctx.globalCompositeOperation = 'screen';
-  const holoColors = ['rgba(56,189,248,0.10)','rgba(168,85,247,0.10)','rgba(236,72,153,0.10)','rgba(34,211,238,0.10)'];
-  for (let i = -h; i < w + h; i += 46) {
-    ctx.strokeStyle = holoColors[((i + h) / 46 | 0) % holoColors.length];
-    ctx.lineWidth = 24;
-    ctx.beginPath();
-    ctx.moveTo(i, -10);
-    ctx.lineTo(i + h * 0.55, h + 10);
-    ctx.stroke();
-  }
-  ctx.restore();
-}
-
-// Shared radiant starburst
-function drawStarburst(ctx, cx, cy, radius) {
-  ctx.save();
-  ctx.translate(cx, cy);
-  const rayGrad = ctx.createRadialGradient(0, 0, 10, 0, 0, radius);
-  rayGrad.addColorStop(0, 'rgba(252,211,77,0.28)');
-  rayGrad.addColorStop(0.4, 'rgba(168,85,247,0.10)');
-  rayGrad.addColorStop(1, 'transparent');
-  ctx.fillStyle = rayGrad;
-  ctx.fillRect(-radius, -radius, radius * 2, radius * 2);
-  ctx.globalAlpha = 0.5;
-  for (let i = 0; i < 16; i++) {
-    ctx.rotate(Math.PI / 8);
-    const rg = ctx.createLinearGradient(0, 0, 0, -radius);
-    rg.addColorStop(0, 'rgba(252,211,77,0.18)');
-    rg.addColorStop(1, 'transparent');
-    ctx.fillStyle = rg;
-    ctx.beginPath();
-    ctx.moveTo(-14, 0); ctx.lineTo(14, 0); ctx.lineTo(4, -radius); ctx.lineTo(-4, -radius);
-    ctx.closePath(); ctx.fill();
-  }
-  ctx.restore();
-}
-
-// Shared cat-head emblem
-function drawCatEmblem(ctx, cx, cy, radius) {
-  ctx.save();
-  ctx.strokeStyle = '#1A0A3E';
-  ctx.lineWidth = radius * 0.10;
+  ctx.strokeStyle = goldGrad(ctx, cx - R, cy - R, cx + R, cy + R);
+  ctx.lineWidth = R * 0.085;
   ctx.lineJoin = 'round';
+  ctx.lineCap = 'round';
+  ctx.shadowColor = 'rgba(252,211,77,0.55)';
+  ctx.shadowBlur = 18;
+
+  // Lingkaran emblem
   ctx.beginPath();
-  ctx.moveTo(cx - radius * 0.40, cy - radius * 0.09);
-  ctx.lineTo(cx - radius * 0.49, cy - radius * 0.54);
-  ctx.lineTo(cx - radius * 0.20, cy - radius * 0.31);
-  ctx.quadraticCurveTo(cx, cy - radius * 0.43, cx + radius * 0.20, cy - radius * 0.31);
-  ctx.lineTo(cx + radius * 0.49, cy - radius * 0.54);
-  ctx.lineTo(cx + radius * 0.40, cy - radius * 0.09);
-  ctx.quadraticCurveTo(cx + radius * 0.43, cy + radius * 0.37, cx, cy + radius * 0.43);
-  ctx.quadraticCurveTo(cx - radius * 0.43, cy + radius * 0.37, cx - radius * 0.40, cy - radius * 0.09);
-  ctx.closePath();
-  ctx.stroke();
-  ctx.fillStyle = '#1A0A3E';
-  ctx.beginPath();
-  ctx.ellipse(cx - radius * 0.16, cy + radius * 0.03, radius * 0.06, radius * 0.09, 0, 0, Math.PI * 2);
-  ctx.ellipse(cx + radius * 0.16, cy + radius * 0.03, radius * 0.06, radius * 0.09, 0, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.restore();
-}
-
-// Shared corner ornaments
-function drawCorners(ctx, w, h, margin, crimpOffset) {
-  const cs = 22;
-  ctx.strokeStyle = 'rgba(252,211,77,0.5)';
-  ctx.lineWidth = 2.5;
-  const top = crimpOffset + margin;
-  const bottom = h - margin;
-  [[margin, top, 1, 1], [w - margin, top, -1, 1], [margin, bottom, 1, -1], [w - margin, bottom, -1, -1]].forEach(([x, y, dx, dy]) => {
-    ctx.beginPath();
-    ctx.moveTo(x, y + cs * dy);
-    ctx.lineTo(x, y);
-    ctx.lineTo(x + cs * dx, y);
-    ctx.stroke();
-  });
-}
-
-// ─────────────────────────────────────────────────────────────
-// FACE 1: FRONT — Hero booster pack artwork
-// ─────────────────────────────────────────────────────────────
-function createPackFrontTexture() {
-  const w = TEX_W, h = TEX_H;
-  const canvas = document.createElement('canvas');
-  canvas.width = w; canvas.height = h;
-  const ctx = canvas.getContext('2d');
-  const cx = w / 2;
-
-  // Deep cosmic violet foil base
-  const bgGrad = ctx.createLinearGradient(0, 0, w * 0.4, h);
-  bgGrad.addColorStop(0, '#0B0420');
-  bgGrad.addColorStop(0.25, '#2D1B69');
-  bgGrad.addColorStop(0.5, '#6D28D9');
-  bgGrad.addColorStop(0.72, '#2D1B69');
-  bgGrad.addColorStop(1, '#0B0420');
-  ctx.fillStyle = bgGrad;
-  ctx.fillRect(0, 0, w, h);
-
-  drawHoloStripes(ctx, w, h);
-
-  // Radiant burst behind emblem
-  drawStarburst(ctx, cx, h * 0.34, 230);
-
-  // ── Top crimp strip (tear zone) ───────────────────────
-  const crimpGrad = ctx.createLinearGradient(0, 0, 0, CRIMP_H);
-  crimpGrad.addColorStop(0, '#1A0A3E');
-  crimpGrad.addColorStop(1, '#3B0764');
-  ctx.fillStyle = crimpGrad;
-  ctx.fillRect(0, 0, w, CRIMP_H);
-
-  // Serrated tear perforation
-  ctx.strokeStyle = 'rgba(252,211,77,0.50)';
-  ctx.lineWidth = 2;
-  ctx.beginPath();
-  for (let x = 0; x <= w; x += 14) {
-    ctx.lineTo(x, CRIMP_H + (x % 28 === 0 ? -4 : 4));
-  }
+  ctx.arc(cx, cy, R, 0, Math.PI * 2);
   ctx.stroke();
 
-  // "TEAR HERE" bilingual
-  ctx.fillStyle = 'rgba(252,211,77,0.55)';
-  ctx.font = '700 13px Outfit, sans-serif';
-  ctx.textAlign = 'center';
-  ctx.fillText('◄  ROBEK DI SINI | TEAR HERE  ►', cx, 38);
+  ctx.shadowBlur = 6;
+  const r = R * 0.62;
 
-  // ── Gold foil outer border ────────────────────────────
-  ctx.strokeStyle = goldBorderGrad(ctx, w, h);
-  ctx.lineWidth = 8;
+  // Mahkota
   ctx.beginPath();
-  ctx.roundRect(12, CRIMP_H + 6, w - 24, h - CRIMP_H - 24, 14);
-  ctx.stroke();
-  // Inner thin rim
-  ctx.strokeStyle = 'rgba(254,249,195,0.35)';
-  ctx.lineWidth = 1.5;
-  ctx.beginPath();
-  ctx.roundRect(24, CRIMP_H + 16, w - 48, h - CRIMP_H - 44, 10);
+  ctx.moveTo(cx - r * 0.42, cy - r * 0.44);
+  ctx.lineTo(cx - r * 0.52, cy - r * 0.92);
+  ctx.lineTo(cx - r * 0.2, cy - r * 0.62);
+  ctx.lineTo(cx, cy - r * 1.0);
+  ctx.lineTo(cx + r * 0.2, cy - r * 0.62);
+  ctx.lineTo(cx + r * 0.52, cy - r * 0.92);
+  ctx.lineTo(cx + r * 0.42, cy - r * 0.44);
   ctx.stroke();
 
-  // ── Holographic medallion ─────────────────────────────
-  const ey = h * 0.34;
-  const medGrad = ctx.createRadialGradient(cx - 18, ey - 18, 5, cx, ey, 72);
-  medGrad.addColorStop(0, '#FEF9C3');
-  medGrad.addColorStop(0.45, '#FBBF24');
-  medGrad.addColorStop(0.75, '#A855F7');
-  medGrad.addColorStop(1, '#4C1D95');
-  ctx.fillStyle = medGrad;
+  // Kepala kucing (telinga + wajah membulat)
   ctx.beginPath();
-  ctx.arc(cx, ey, 70, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.lineWidth = 4;
-  ctx.strokeStyle = goldBorderGrad(ctx, w, h);
-  ctx.stroke();
-  ctx.lineWidth = 1.5;
-  ctx.strokeStyle = 'rgba(255,255,255,0.5)';
-  ctx.beginPath();
-  ctx.arc(cx, ey, 60, 0, Math.PI * 2);
+  ctx.moveTo(cx - r * 0.30, cy - r * 0.38);
+  ctx.lineTo(cx - r * 0.66, cy - r * 0.66);
+  ctx.lineTo(cx - r * 0.62, cy - r * 0.05);
+  ctx.quadraticCurveTo(cx - r * 0.55, cy + r * 0.52, cx, cy + r * 0.62);
+  ctx.quadraticCurveTo(cx + r * 0.55, cy + r * 0.52, cx + r * 0.62, cy - r * 0.05);
+  ctx.lineTo(cx + r * 0.66, cy - r * 0.66);
+  ctx.lineTo(cx + r * 0.30, cy - r * 0.38);
   ctx.stroke();
 
-  drawCatEmblem(ctx, cx, ey, 70);
-
-  // ── Title lockup ──────────────────────────────────────
-  ctx.save();
-  ctx.textAlign = 'center';
-  ctx.fillStyle = '#FEF9C3';
-  ctx.font = '900 46px Outfit, Inter, sans-serif';
-  ctx.shadowColor = 'rgba(0,0,0,0.6)';
-  ctx.shadowBlur = 8;
-  ctx.fillText('MEMECATS', cx, h * 0.56);
-  ctx.shadowBlur = 0;
-  // Set banner
-  const banGrad = ctx.createLinearGradient(cx - 130, 0, cx + 130, 0);
-  banGrad.addColorStop(0, '#7C3AED');
-  banGrad.addColorStop(0.5, '#C026D3');
-  banGrad.addColorStop(1, '#7C3AED');
-  ctx.fillStyle = banGrad;
+  // Kumis
+  ctx.lineWidth = R * 0.05;
   ctx.beginPath();
-  ctx.roundRect(cx - 135, h * 0.585, 270, 34, 17);
-  ctx.fill();
-  ctx.fillStyle = '#FEF9C3';
-  ctx.font = '800 19px Outfit, sans-serif';
-  ctx.fillText('VIRAL TREASURES', cx, h * 0.585 + 24);
-  ctx.restore();
-
-  // ── Booster label ─────────────────────────────────────
-  ctx.fillStyle = 'rgba(226,232,240,0.85)';
-  ctx.font = '600 15px Inter, sans-serif';
-  ctx.textAlign = 'center';
-  ctx.fillText('BOOSTER PACK', cx, h * 0.70);
-
-  // ── Bottom info bar ───────────────────────────────────
-  ctx.fillStyle = 'rgba(11,4,32,0.75)';
-  ctx.beginPath();
-  ctx.roundRect(40, h - 78, w - 80, 38, 10);
-  ctx.fill();
-  ctx.strokeStyle = 'rgba(252,211,77,0.45)';
-  ctx.lineWidth = 1;
+  ctx.moveTo(cx - r * 0.68, cy + r * 0.14); ctx.lineTo(cx - r * 1.02, cy + r * 0.08);
+  ctx.moveTo(cx - r * 0.68, cy + r * 0.30); ctx.lineTo(cx - r * 1.02, cy + r * 0.32);
+  ctx.moveTo(cx + r * 0.68, cy + r * 0.14); ctx.lineTo(cx + r * 1.02, cy + r * 0.08);
+  ctx.moveTo(cx + r * 0.68, cy + r * 0.30); ctx.lineTo(cx + r * 1.02, cy + r * 0.32);
   ctx.stroke();
+
+  // Mata: kiri terbuka, kanan wink (garis) — playful seperti referensi
   ctx.fillStyle = '#FCD34D';
-  ctx.font = '700 17px Outfit, sans-serif';
-  ctx.fillText('5 KARTU  •  100 🪙', cx, h - 53);
+  ctx.beginPath();
+  ctx.ellipse(cx - r * 0.24, cy + r * 0.06, r * 0.085, r * 0.12, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(cx + r * 0.13, cy + r * 0.06);
+  ctx.lineTo(cx + r * 0.36, cy + r * 0.06);
+  ctx.stroke();
 
-  drawCorners(ctx, w, h, 40, CRIMP_H + 30);
+  // Hidung kecil
+  ctx.beginPath();
+  ctx.moveTo(cx - r * 0.05, cy + r * 0.30);
+  ctx.lineTo(cx + r * 0.05, cy + r * 0.30);
+  ctx.lineTo(cx, cy + r * 0.37);
+  ctx.closePath();
+  ctx.fillStyle = '#FCD34D';
+  ctx.fill();
 
-  return new THREE.CanvasTexture(canvas);
+  ctx.restore();
 }
 
-// ─────────────────────────────────────────────────────────────
-// FACE 2: BACK — Alternate design with set details
-// ─────────────────────────────────────────────────────────────
-function createPackBackTexture() {
-  const w = TEX_W, h = TEX_H;
-  const canvas = document.createElement('canvas');
-  canvas.width = w; canvas.height = h;
-  const ctx = canvas.getContext('2d');
-  const cx = w / 2;
+// Zona crimp: garis lipatan vertikal rapat (kesan foil terjepit mesin)
+function drawCrimpBand(ctx, y0, height) {
+  ctx.save();
+  const grad = ctx.createLinearGradient(0, y0, 0, y0 + height);
+  grad.addColorStop(0, '#17171C');
+  grad.addColorStop(0.5, '#0C0C10');
+  grad.addColorStop(1, '#17171C');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, y0, TEX_W, height);
+  for (let x = 4; x < TEX_W; x += 9) {
+    ctx.strokeStyle = 'rgba(255,235,180,0.05)';
+    ctx.lineWidth = 2.4;
+    ctx.beginPath(); ctx.moveTo(x, y0 + 3); ctx.lineTo(x, y0 + height - 3); ctx.stroke();
+    ctx.strokeStyle = 'rgba(0,0,0,0.5)';
+    ctx.lineWidth = 1.6;
+    ctx.beginPath(); ctx.moveTo(x + 3.5, y0 + 3); ctx.lineTo(x + 3.5, y0 + height - 3); ctx.stroke();
+  }
+  // Garis emas tipis pembatas crimp
+  ctx.strokeStyle = 'rgba(252,211,77,0.35)';
+  ctx.lineWidth = 1.5;
+  const yLine = y0 < TEX_H / 2 ? y0 + height - 2 : y0 + 2;
+  ctx.beginPath(); ctx.moveTo(0, yLine); ctx.lineTo(TEX_W, yLine); ctx.stroke();
+  ctx.restore();
+}
 
-  // Dark navy/obsidian gradient (mysterious night vibe)
-  const bgGrad = ctx.createRadialGradient(cx, h * 0.45, 40, cx, h * 0.5, w * 0.75);
-  bgGrad.addColorStop(0, '#0F172A');
-  bgGrad.addColorStop(0.5, '#020617');
-  bgGrad.addColorStop(1, '#000000');
-  ctx.fillStyle = bgGrad;
+// Desain LENGKAP wrapper (dipakai utuh & di-slice untuk potongan sobekan)
+function drawWrapperDesign(ctx, isBack = false) {
+  const w = TEX_W, h = TEX_H, cx = w / 2;
+
+  // ── Base foil hitam matte dengan sheen halus ──
+  const bg = ctx.createLinearGradient(0, 0, w * 0.35, h);
+  bg.addColorStop(0, '#131318');
+  bg.addColorStop(0.4, '#0A0A0E');
+  bg.addColorStop(0.72, '#101014');
+  bg.addColorStop(1, '#08080B');
+  ctx.fillStyle = bg;
   ctx.fillRect(0, 0, w, h);
 
-  // Subtle hexagon grid pattern
+  // Grid diagonal halus (tekstur foil ala referensi)
   ctx.save();
-  ctx.globalAlpha = 0.06;
-  ctx.strokeStyle = '#FCD34D';
+  ctx.strokeStyle = 'rgba(252,211,77,0.045)';
   ctx.lineWidth = 1;
-  const hexR = 28;
-  const hexH = hexR * Math.sqrt(3);
-  for (let row = -2; row < h / hexH + 2; row++) {
-    const offsetX = row % 2 === 0 ? 0 : hexR * 1.5;
-    for (let col = -2; col < w / (hexR * 3) + 2; col++) {
-      const hx = col * hexR * 3 + offsetX;
-      const hy = row * hexH * 0.5;
-      ctx.beginPath();
-      for (let s = 0; s < 6; s++) {
-        const angle = Math.PI / 3 * s - Math.PI / 6;
-        const px = hx + hexR * Math.cos(angle);
-        const py = hy + hexR * Math.sin(angle);
-        s === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
-      }
-      ctx.closePath();
-      ctx.stroke();
-    }
+  for (let i = -h; i < w + h; i += 26) {
+    ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i + h, h); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(i + h, 0); ctx.lineTo(i, h); ctx.stroke();
   }
   ctx.restore();
 
-  // Diagonal holo sheen (opposite direction from front)
+  // Sheen diagonal lembut (highlight foil)
   ctx.save();
   ctx.globalCompositeOperation = 'screen';
-  for (let i = -h; i < w + h; i += 52) {
-    ctx.strokeStyle = ['rgba(245,158,11,0.06)','rgba(168,85,247,0.06)','rgba(56,189,248,0.06)'][i % 3];
-    ctx.lineWidth = 20;
-    ctx.beginPath();
-    ctx.moveTo(i, -10);
-    ctx.lineTo(i - h * 0.55, h + 10);
-    ctx.stroke();
-  }
+  const sheen = ctx.createLinearGradient(0, 0, w, h);
+  sheen.addColorStop(0, 'rgba(255,244,214,0)');
+  sheen.addColorStop(0.42, 'rgba(255,244,214,0.05)');
+  sheen.addColorStop(0.5, 'rgba(255,244,214,0.10)');
+  sheen.addColorStop(0.58, 'rgba(255,244,214,0.05)');
+  sheen.addColorStop(1, 'rgba(255,244,214,0)');
+  ctx.fillStyle = sheen;
+  ctx.fillRect(0, 0, w, h);
   ctx.restore();
 
-  // ── Bottom crimp strip ────────────────────────────────
-  const crimpGrad = ctx.createLinearGradient(0, h - CRIMP_H, 0, h);
-  crimpGrad.addColorStop(0, '#3B0764');
-  crimpGrad.addColorStop(1, '#1A0A3E');
-  ctx.fillStyle = crimpGrad;
-  ctx.fillRect(0, h - CRIMP_H, w, CRIMP_H);
-  ctx.strokeStyle = 'rgba(252,211,77,0.35)';
+  // Crimp seal atas & bawah
+  drawCrimpBand(ctx, 0, CRIMP_PX);
+  drawCrimpBand(ctx, h - CRIMP_PX, CRIMP_PX);
+
+  // ── Frame emas tipis + baut sudut ──
+  const fx = 26, fy = CRIMP_PX + 16;
+  const fw = w - fx * 2, fh = h - CRIMP_PX * 2 - 32;
+  ctx.save();
+  ctx.strokeStyle = 'rgba(252,211,77,0.55)';
   ctx.lineWidth = 2;
   ctx.beginPath();
-  for (let x = 0; x <= w; x += 14) {
-    ctx.lineTo(x, h - CRIMP_H + (x % 28 === 0 ? 4 : -4));
-  }
+  ctx.roundRect(fx, fy, fw, fh, 14);
   ctx.stroke();
-
-  // ── Outer gold foil border ────────────────────────────
-  ctx.strokeStyle = goldBorderGrad(ctx, w, h);
-  ctx.lineWidth = 8;
-  ctx.beginPath();
-  ctx.roundRect(12, 18, w - 24, h - CRIMP_H - 36, 14);
-  ctx.stroke();
-  ctx.strokeStyle = 'rgba(254,249,195,0.30)';
-  ctx.lineWidth = 1.5;
-  ctx.beginPath();
-  ctx.roundRect(24, 28, w - 48, h - CRIMP_H - 56, 10);
-  ctx.stroke();
-
-  // ── Central emblem (smaller, lower) ───────────────────
-  const ey = h * 0.32;
-  const medGrad = ctx.createRadialGradient(cx - 12, ey - 12, 3, cx, ey, 55);
-  medGrad.addColorStop(0, '#1A0A3E');
-  medGrad.addColorStop(0.6, '#2D1B69');
-  medGrad.addColorStop(1, '#0F172A');
-  ctx.fillStyle = medGrad;
-  ctx.beginPath();
-  ctx.arc(cx, ey, 52, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.lineWidth = 3;
-  ctx.strokeStyle = goldBorderGrad(ctx, w, h);
-  ctx.stroke();
-
-  drawCatEmblem(ctx, cx, ey, 52);
-
-  // ── Set information panel ─────────────────────────────
-  ctx.save();
-  ctx.textAlign = 'center';
-
-  // Collection title
-  ctx.fillStyle = '#FCD34D';
-  ctx.font = '900 30px Outfit, Inter, sans-serif';
-  ctx.shadowColor = 'rgba(0,0,0,0.7)';
-  ctx.shadowBlur = 6;
-  ctx.fillText('MEMECATS', cx, h * 0.48);
-  ctx.shadowBlur = 0;
-
-  // Subtitle
-  ctx.fillStyle = '#C084FC';
-  ctx.font = '700 14px Outfit, sans-serif';
-  ctx.fillText('THE VIRAL COLLECTION', cx, h * 0.52);
-
-  // Divider
-  const divGrad = ctx.createLinearGradient(cx - 120, 0, cx + 120, 0);
-  divGrad.addColorStop(0, 'transparent');
-  divGrad.addColorStop(0.5, 'rgba(252,211,77,0.5)');
-  divGrad.addColorStop(1, 'transparent');
-  ctx.strokeStyle = divGrad;
-  ctx.lineWidth = 1.5;
-  ctx.beginPath();
-  ctx.moveTo(cx - 120, h * 0.545); ctx.lineTo(cx + 120, h * 0.545);
-  ctx.stroke();
-
-  // Contents description
-  ctx.fillStyle = 'rgba(203,213,225,0.9)';
-  ctx.font = '600 14px Inter, sans-serif';
-  ctx.fillText('ISI / CONTENTS:', cx, h * 0.58);
-  ctx.font = '500 13px Inter, sans-serif';
-  ctx.fillStyle = 'rgba(203,213,225,0.7)';
-  const contents = [
-    '✦  5 Kartu Virtual Acak',
-    '✦  Minimal 1 Rare atau lebih tinggi',
-    '✦  Kesempatan Legendary 3%',
-  ];
-  contents.forEach((t, i) => ctx.fillText(t, cx, h * 0.61 + i * 22));
-
-  // Barcode area
-  ctx.fillStyle = 'rgba(30,41,59,0.9)';
-  ctx.beginPath();
-  ctx.roundRect(cx - 100, h * 0.73, 200, 42, 6);
-  ctx.fill();
-  ctx.strokeStyle = 'rgba(252,211,77,0.3)';
+  ctx.strokeStyle = 'rgba(252,211,77,0.18)';
   ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.roundRect(fx + 5, fy + 5, fw - 10, fh - 10, 10);
   ctx.stroke();
-  // Fake barcode lines
-  ctx.strokeStyle = 'rgba(255,255,255,0.5)';
-  ctx.lineWidth = 1.2;
-  const bx = cx - 80, by = h * 0.73 + 8;
-  for (let i = 0; i < 35; i++) {
-    const lh = 10 + Math.abs(Math.sin(i * 0.7)) * 16;
-    ctx.beginPath();
-    ctx.moveTo(bx + i * 4.5, by);
-    ctx.lineTo(bx + i * 4.5, by + lh);
-    ctx.stroke();
-  }
-  ctx.fillStyle = 'rgba(203,213,225,0.5)';
-  ctx.font = '9px monospace';
-  ctx.fillText('MC-BST-001', cx, h * 0.73 + 36);
-
-  // Bottom legal text
-  ctx.fillStyle = 'rgba(148,163,184,0.4)';
-  ctx.font = '8px Inter, sans-serif';
-  ctx.fillText('© 2025 MemeCats TCG. All rights reserved.', cx, h - CRIMP_H - 24);
-  ctx.fillText('Made with ❤️ for the viral community.', cx, h - CRIMP_H - 13);
-
+  // Baut emas di 4 sudut frame
+  [[fx + 10, fy + 10], [fx + fw - 10, fy + 10], [fx + 10, fy + fh - 10], [fx + fw - 10, fy + fh - 10]].forEach(([bx, by]) => {
+    const bg2 = ctx.createRadialGradient(bx - 1.5, by - 1.5, 0.5, bx, by, 5);
+    bg2.addColorStop(0, '#FEF3C7');
+    bg2.addColorStop(0.5, '#F59E0B');
+    bg2.addColorStop(1, '#6B4308');
+    ctx.fillStyle = bg2;
+    ctx.beginPath(); ctx.arc(bx, by, 4.5, 0, Math.PI * 2); ctx.fill();
+  });
   ctx.restore();
 
-  drawCorners(ctx, w, h, 40, 30);
+  if (!isBack) {
+    // ── FRONT: emblem + wordmark ──
+    drawGoldCatEmblem(ctx, cx, h * 0.40, 92);
 
-  return new THREE.CanvasTexture(canvas);
-}
+    // MEMECATS — emas tebal dengan bevel
+    ctx.save();
+    ctx.textAlign = 'center';
+    ctx.font = '900 58px "Outfit", sans-serif';
+    ctx.letterSpacing = '2px';
+    ctx.shadowColor = 'rgba(245,158,11,0.5)';
+    ctx.shadowBlur = 16;
+    ctx.strokeStyle = '#3A2504';
+    ctx.lineWidth = 6;
+    ctx.lineJoin = 'round';
+    ctx.strokeText('MEMECATS', cx, h * 0.665);
+    const tg = ctx.createLinearGradient(0, h * 0.665 - 44, 0, h * 0.665 + 8);
+    tg.addColorStop(0, '#FEF3C7');
+    tg.addColorStop(0.45, '#FCD34D');
+    tg.addColorStop(1, '#B45309');
+    ctx.fillStyle = tg;
+    ctx.fillText('MEMECATS', cx, h * 0.665);
+    ctx.shadowBlur = 0;
 
-// ─────────────────────────────────────────────────────────────
-// FACE 3 & 4: LEFT/RIGHT SIDES — decorative element strip
-// ─────────────────────────────────────────────────────────────
-function createPackSideTexture() {
-  const sw = 128, sh = 720;
-  const canvas = document.createElement('canvas');
-  canvas.width = sw; canvas.height = sh;
-  const ctx = canvas.getContext('2d');
-
-  // Metallic foil base with cosmic purple tint
-  const grad = ctx.createLinearGradient(0, 0, sw, 0);
-  grad.addColorStop(0, '#1E1040');
-  grad.addColorStop(0.2, '#3B1F7E');
-  grad.addColorStop(0.5, '#5B3FAD');
-  grad.addColorStop(0.8, '#2D1B69');
-  grad.addColorStop(1, '#1E1040');
-  ctx.fillStyle = grad;
-  ctx.fillRect(0, 0, sw, sh);
-
-  // ── Element icons down the strip ──────────────────────
-  const elements = [
-    { emoji: '🔥', y: 0.12, color: '#F59E0B', label: 'FIRE' },
-    { emoji: '💧', y: 0.24, color: '#38BDF8', label: 'WATER' },
-    { emoji: '🌿', y: 0.36, color: '#4ADE80', label: 'GRASS' },
-    { emoji: '⚡', y: 0.48, color: '#FBBF24', label: 'VOLT' },
-    { emoji: '🌑', y: 0.60, color: '#C084FC', label: 'DARK' },
-    { emoji: '✨', y: 0.72, color: '#FCD34D', label: 'MYTH' },
-    { emoji: '❄️', y: 0.84, color: '#93C5FD', label: 'ICE' },
-  ];
-
-  ctx.textAlign = 'center';
-  elements.forEach((el) => {
-    const ey = sh * el.y;
-
-    // Glow circle behind each icon
-    const glow = ctx.createRadialGradient(sw/2, ey, 2, sw/2, ey, 32);
-    glow.addColorStop(0, el.color + '40');
-    glow.addColorStop(1, 'transparent');
-    ctx.fillStyle = glow;
-    ctx.beginPath();
-    ctx.arc(sw/2, ey, 32, 0, Math.PI * 2);
-    ctx.fill();
-
-    // Icon
-    ctx.font = '20px serif';
-    ctx.fillText(el.emoji, sw/2, ey + 7);
-
-    // Small label
-    ctx.fillStyle = el.color + '99';
-    ctx.font = '700 7px Outfit, sans-serif';
-    ctx.fillText(el.label, sw/2, ey + 22);
-  });
-
-  // ── Decorative dots along edges ────────────────────────
-  for (let y = 15; y < sh - 15; y += 38) {
-    ctx.fillStyle = 'rgba(252,211,77,0.35)';
-    ctx.beginPath();
-    ctx.arc(12, y, 2.5, 0, Math.PI * 2);
-    ctx.arc(sw - 12, y, 2.5, 0, Math.PI * 2);
-    ctx.fill();
-  }
-
-  // ── Connecting vertical lines ──────────────────────────
-  ctx.strokeStyle = 'rgba(252,211,77,0.15)';
-  ctx.lineWidth = 0.8;
-  ctx.setLineDash([3, 8]);
-  ctx.beginPath();
-  ctx.moveTo(12, 10);
-  ctx.lineTo(12, sh - 10);
-  ctx.moveTo(sw - 12, 10);
-  ctx.lineTo(sw - 12, sh - 10);
-  ctx.stroke();
-  ctx.setLineDash([]);
-
-  // ── Top & bottom cap markers ───────────────────────────
-  ['rgba(252,211,77,0.5)', 'rgba(192,132,252,0.5)'].forEach((color, i) => {
-    const cy = i === 0 ? 42 : sh - 42;
-    ctx.fillStyle = color;
-    ctx.font = '700 8px Outfit, sans-serif';
-    ctx.fillText(i === 0 ? '▲' : '▼', sw/2, cy + 3);
-  });
-
-  // ── Metallic sheen overlay ─────────────────────────────
-  const sheenGrad = ctx.createLinearGradient(0, 0, sw, 0);
-  sheenGrad.addColorStop(0, 'rgba(255,255,255,0.00)');
-  sheenGrad.addColorStop(0.35, 'rgba(255,255,255,0.04)');
-  sheenGrad.addColorStop(0.5, 'rgba(255,255,255,0.08)');
-  sheenGrad.addColorStop(0.65, 'rgba(255,255,255,0.04)');
-  sheenGrad.addColorStop(1, 'rgba(255,255,255,0.00)');
-  ctx.fillStyle = sheenGrad;
-  ctx.fillRect(0, 0, sw, sh);
-
-  return new THREE.CanvasTexture(canvas);
-}
-
-// ─────────────────────────────────────────────────────────────
-// FACE 5: TOP — Crimp seal (the part you tear open)
-// ─────────────────────────────────────────────────────────────
-function createPackTopTexture() {
-  const tw = 512, th = 128;
-  const canvas = document.createElement('canvas');
-  canvas.width = tw; canvas.height = th;
-  const ctx = canvas.getContext('2d');
-
-  // Dark foil base
-  const grad = ctx.createLinearGradient(0, 0, 0, th);
-  grad.addColorStop(0, '#1A0A3E');
-  grad.addColorStop(0.5, '#3B0764');
-  grad.addColorStop(1, '#1A0A3E');
-  ctx.fillStyle = grad;
-  ctx.fillRect(0, 0, tw, th);
-
-  // Serrated crimp pattern (zigzag perforation)
-  ctx.strokeStyle = 'rgba(252,211,77,0.55)';
-  ctx.lineWidth = 2.5;
-  ctx.beginPath();
-  for (let x = 0; x <= tw; x += 14) {
-    const zigY = th / 2 + (x % 28 === 0 ? -8 : 8);
-    x === 0 ? ctx.moveTo(x, zigY) : ctx.lineTo(x, zigY);
-  }
-  ctx.stroke();
-
-  // Crimp ridges (horizontal lines simulating the pressed seal)
-  for (let y = 0; y < th; y += 6) {
-    const alpha = 0.05 + Math.abs(Math.sin(y * 0.5)) * 0.10;
-    ctx.strokeStyle = `rgba(252,211,77,${alpha})`;
+    // THE VIRAL COLLECTION
+    ctx.font = '700 17px "Outfit", sans-serif';
+    ctx.letterSpacing = '6px';
+    ctx.fillStyle = 'rgba(252,211,77,0.75)';
+    ctx.fillText('THE VIRAL COLLECTION', cx, h * 0.725);
+    ctx.letterSpacing = '0px';
+    // Garis pengapit kecil
+    ctx.strokeStyle = 'rgba(252,211,77,0.4)';
     ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(cx - 150, h * 0.75); ctx.lineTo(cx - 40, h * 0.75); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(cx + 40, h * 0.75); ctx.lineTo(cx + 150, h * 0.75); ctx.stroke();
+    ctx.fillStyle = 'rgba(252,211,77,0.6)';
     ctx.beginPath();
-    ctx.moveTo(0, y);
-    ctx.lineTo(tw, y + (y % 12 === 0 ? 1 : -0.5));
-    ctx.stroke();
+    ctx.moveTo(cx, h * 0.744); ctx.lineTo(cx + 6, h * 0.75); ctx.lineTo(cx, h * 0.756); ctx.lineTo(cx - 6, h * 0.75);
+    ctx.closePath(); ctx.fill();
+
+    // 5 KARTU • 100 KOIN kecil di bawah
+    ctx.font = '600 13px "Inter", sans-serif';
+    ctx.letterSpacing = '2px';
+    ctx.fillStyle = 'rgba(210,190,140,0.5)';
+    ctx.fillText('5 CARDS PER PACK', cx, h * 0.82);
+    ctx.letterSpacing = '0px';
+    ctx.restore();
+  } else {
+    // ── BACK: emblem kecil + fake barcode/legal ──
+    drawGoldCatEmblem(ctx, cx, h * 0.34, 60);
+    ctx.save();
+    ctx.textAlign = 'center';
+    ctx.font = '800 26px "Outfit", sans-serif';
+    ctx.letterSpacing = '3px';
+    ctx.fillStyle = 'rgba(252,211,77,0.8)';
+    ctx.fillText('MEMECATS', cx, h * 0.5);
+    ctx.font = '500 11px "Inter", sans-serif';
+    ctx.fillStyle = 'rgba(210,190,140,0.45)';
+    ctx.letterSpacing = '1px';
+    ctx.fillText('BOOSTER PACK • 5 RANDOM CARDS', cx, h * 0.55);
+    ctx.fillText('MC-PACK-2026 | BATCH #0042', cx, h * 0.585);
+    // Fake barcode
+    ctx.letterSpacing = '0px';
+    let bx = cx - 80;
+    while (bx < cx + 80) {
+      const bwid = 1.5 + Math.random() * 4;
+      ctx.fillStyle = 'rgba(230,215,170,0.55)';
+      ctx.fillRect(bx, h * 0.66, bwid, 44);
+      bx += bwid + 2 + Math.random() * 4;
+    }
+    ctx.restore();
   }
 
-  // Metallic sheen
-  const sheenGrad = ctx.createLinearGradient(0, 0, 0, th);
-  sheenGrad.addColorStop(0, 'rgba(255,255,255,0.00)');
-  sheenGrad.addColorStop(0.4, 'rgba(255,255,255,0.07)');
-  sheenGrad.addColorStop(0.5, 'rgba(255,255,255,0.12)');
-  sheenGrad.addColorStop(0.6, 'rgba(255,255,255,0.07)');
-  sheenGrad.addColorStop(1, 'rgba(255,255,255,0.00)');
-  ctx.fillStyle = sheenGrad;
-  ctx.fillRect(0, 0, tw, th);
-
-  // "TEAR HERE" label
-  ctx.fillStyle = 'rgba(252,211,77,0.6)';
-  ctx.font = '700 13px Outfit, sans-serif';
-  ctx.textAlign = 'center';
-  ctx.fillText('⚡ ROBEK / TEAR ⚡', tw / 2, th / 2 + 5);
-
-  return new THREE.CanvasTexture(canvas);
+  // Vignette tepi
+  ctx.save();
+  const vig = ctx.createRadialGradient(cx, h / 2, h * 0.28, cx, h / 2, h * 0.72);
+  vig.addColorStop(0, 'rgba(0,0,0,0)');
+  vig.addColorStop(1, 'rgba(0,0,0,0.42)');
+  ctx.fillStyle = vig;
+  ctx.fillRect(0, 0, w, h);
+  ctx.restore();
 }
 
-// ─────────────────────────────────────────────────────────────
-// FACE 6: BOTTOM — Bottom crimp seal (mirrored)
-// ─────────────────────────────────────────────────────────────
-function createPackBottomTexture() {
-  const tw = 512, th = 128;
-  const canvas = document.createElement('canvas');
-  canvas.width = tw; canvas.height = th;
-  const ctx = canvas.getContext('2d');
-
-  const grad = ctx.createLinearGradient(0, 0, 0, th);
-  grad.addColorStop(0, '#1A0A3E');
-  grad.addColorStop(0.5, '#3B0764');
-  grad.addColorStop(1, '#1A0A3E');
-  ctx.fillStyle = grad;
-  ctx.fillRect(0, 0, tw, th);
-
-  // Crimp zigzag
-  ctx.strokeStyle = 'rgba(252,211,77,0.45)';
-  ctx.lineWidth = 2.5;
+// Zigzag alpha cut di tepi crimp (dipanggil setelah desain digambar)
+function cutZigzagEdge(ctx, w, edgeY, dir) {
+  // dir -1 = potong ke atas dari edgeY (tepi atas), +1 = ke bawah (tepi bawah)
+  // Skala gerigi disamakan dengan silhouette geometri core
+  const toothPx = (TOOTH_H / PACK_H) * TEX_H;
+  ctx.save();
+  ctx.globalCompositeOperation = 'destination-out';
   ctx.beginPath();
-  for (let x = 0; x <= tw; x += 14) {
-    const zigY = th / 2 + (x % 28 === 0 ? 8 : -8);
-    x === 0 ? ctx.moveTo(x, zigY) : ctx.lineTo(x, zigY);
+  const n = TEETH;
+  if (dir < 0) {
+    ctx.moveTo(0, edgeY - 1);
+    for (let i = 0; i <= n; i++) {
+      const x0 = (i / n) * w;
+      ctx.lineTo(x0, edgeY + (i % 2 === 0 ? toothPx : 0));
+    }
+    ctx.lineTo(w, -20); ctx.lineTo(0, -20);
+  } else {
+    ctx.moveTo(0, edgeY + 1);
+    for (let i = 0; i <= n; i++) {
+      const x0 = (i / n) * w;
+      ctx.lineTo(x0, edgeY - (i % 2 === 0 ? toothPx : 0));
+    }
+    ctx.lineTo(w, TEX_H + 20); ctx.lineTo(0, TEX_H + 20);
   }
-  ctx.stroke();
-
-  // Crimp ridges
-  for (let y = 0; y < th; y += 6) {
-    const alpha = 0.05 + Math.abs(Math.sin(y * 0.5)) * 0.10;
-    ctx.strokeStyle = `rgba(252,211,77,${alpha})`;
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(0, y);
-    ctx.lineTo(tw, y + (y % 12 === 0 ? -1 : 0.5));
-    ctx.stroke();
-  }
-
-  // Metallic sheen
-  const sheenGrad = ctx.createLinearGradient(0, 0, 0, th);
-  sheenGrad.addColorStop(0, 'rgba(255,255,255,0.00)');
-  sheenGrad.addColorStop(0.4, 'rgba(255,255,255,0.07)');
-  sheenGrad.addColorStop(0.5, 'rgba(255,255,255,0.12)');
-  sheenGrad.addColorStop(0.6, 'rgba(255,255,255,0.07)');
-  sheenGrad.addColorStop(1, 'rgba(255,255,255,0.00)');
-  ctx.fillStyle = sheenGrad;
-  ctx.fillRect(0, 0, tw, th);
-
-  // Serial number
-  ctx.fillStyle = 'rgba(252,211,77,0.3)';
-  ctx.font = '9px monospace';
-  ctx.textAlign = 'center';
-  ctx.fillText('MC-PACK-2025  |  BATCH #0042', tw / 2, th / 2 + 4);
-
-  return new THREE.CanvasTexture(canvas);
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
 }
 
+// Tepi sobekan tak beraturan (alpha) + sliver foil terang = kesan "brewek"
+function tornEdge(ctx, w, edgeY, dir) {
+  ctx.save();
+  // Potong tak beraturan
+  ctx.globalCompositeOperation = 'destination-out';
+  ctx.beginPath();
+  ctx.moveTo(0, edgeY);
+  let x = 0;
+  const pts = [];
+  while (x < w) {
+    const ny = edgeY + dir * (Math.random() * 7);
+    pts.push([x, ny]);
+    ctx.lineTo(x, ny);
+    x += 6 + Math.random() * 14;
+  }
+  pts.push([w, edgeY]);
+  ctx.lineTo(w, edgeY);
+  ctx.lineTo(w, edgeY - dir * 40);
+  ctx.lineTo(0, edgeY - dir * 40);
+  ctx.closePath();
+  ctx.fill();
+  // Sliver foil perak-emas di tepi sobekan
+  ctx.globalCompositeOperation = 'source-over';
+  ctx.strokeStyle = 'rgba(255,240,200,0.75)';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  pts.forEach(([px, py], i) => (i === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py)));
+  ctx.stroke();
+  ctx.restore();
+}
+
+// Canvas texture: 'whole' | 'strip' | 'body', front/back
+function createWrapperTexture(part, isBack) {
+  const canvas = document.createElement('canvas');
+  canvas.width = TEX_W;
+  const stripPx = Math.round((STRIP_H / PACK_H) * TEX_H);
+  canvas.height = part === 'whole' ? TEX_H : part === 'strip' ? stripPx : TEX_H - stripPx;
+  const ctx = canvas.getContext('2d');
+  if (part === 'body') ctx.translate(0, -stripPx);
+  drawWrapperDesign(ctx, isBack);
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  // Zigzag cut di tepi crimp
+  if (part === 'whole' || part === 'strip') cutZigzagEdge(ctx, TEX_W, 2, -1);
+  if (part === 'whole' || part === 'body') cutZigzagEdge(ctx, TEX_W, canvas.height - 2, 1);
+  // Tepi sobekan tak beraturan
+  if (part === 'strip') tornEdge(ctx, TEX_W, canvas.height - 2, 1);
+  if (part === 'body') tornEdge(ctx, TEX_W, 2, -1);
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = 4;
+  disposables.push(tex);
+  return tex;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// GEOMETRI POUCH — lembar depan/belakang menggembung (pillow) +
+// core tipis dengan silhouette zigzag untuk ketebalan tepi
+// ═══════════════════════════════════════════════════════════════
+
+// Gembungan bantal: 0 di tepi kiri/kanan & zona crimp, max di tengah
+function pillow(x, gy) {
+  const nx = Math.min(Math.abs(x) / (PACK_W / 2), 1);
+  const fx = Math.pow(Math.cos(nx * Math.PI / 2), 0.62);
+  const bodyHalf = PACK_H / 2 - CRIMP;
+  const ny = Math.min(Math.abs(gy) / bodyHalf, 1);
+  const fy = Math.pow(Math.cos(ny * Math.PI / 2), 0.42);
+  return BULGE * fx * fy;
+}
+
+// Outline wrapper (untuk core): zigzag di tepi crimp, lurus di garis sobek
+function buildOutlineShape(yBottom, yTop, zigBottom, zigTop) {
+  const s = new THREE.Shape();
+  const W2 = PACK_W / 2;
+  const step = PACK_W / TEETH;
+  s.moveTo(-W2, yBottom);
+  if (zigBottom) {
+    for (let i = 0; i <= TEETH; i++) {
+      s.lineTo(-W2 + i * step, yBottom + (i % 2 === 0 ? 0 : TOOTH_H));
+    }
+  } else {
+    s.lineTo(W2, yBottom);
+  }
+  s.lineTo(W2, yTop);
+  if (zigTop) {
+    for (let i = 0; i <= TEETH; i++) {
+      s.lineTo(W2 - i * step, yTop - (i % 2 === 0 ? 0 : TOOTH_H));
+    }
+  } else {
+    s.lineTo(-W2, yTop);
+  }
+  s.lineTo(-W2, yBottom);
+  return s;
+}
+
+// Inti wrapper harus nyaris hitam pekat — env map dikecilkan supaya tidak
+// memantul jadi abu-abu murahan
+const coreMaterial = new THREE.MeshStandardMaterial({
+  color: 0x050508, roughness: 0.7, metalness: 0.15, envMapIntensity: 0.25,
+});
+disposables.push(coreMaterial);
+
+function buildSheetGeometry(yBottom, yTop) {
+  const height = yTop - yBottom;
+  const centerY = (yBottom + yTop) / 2;
+  const geo = new THREE.PlaneGeometry(PACK_W, height, 30, 40);
+  const pos = geo.attributes.position;
+  for (let i = 0; i < pos.count; i++) {
+    const x = pos.getX(i);
+    const gy = pos.getY(i) + centerY; // koordinat pack global
+    pos.setZ(i, CORE_D / 2 + pillow(x, gy));
+  }
+  geo.computeVertexNormals();
+  disposables.push(geo);
+  return { geo, centerY };
+}
+
+function makeSheetMaterial(tex) {
+  // Matte black foil premium: specular ada tapi terkendali — highlight
+  // muncul sebagai sheen lembut yang bergerak saat pack dirotasi
+  const mat = new THREE.MeshStandardMaterial({
+    map: tex,
+    roughness: 0.44,
+    metalness: 0.5,
+    envMapIntensity: 0.65,
+    transparent: true,
+    alphaTest: 0.35,
+    emissive: new THREE.Color(0x120C02),
+    emissiveIntensity: 0.06,
+  });
+  disposables.push(mat);
+  return mat;
+}
+
+// Bangun satu unit pouch utuh (core + sheet depan + sheet belakang)
+function buildPouchUnit() {
+  const group = new THREE.Group();
+
+  const coreGeo = new THREE.ExtrudeGeometry(
+    buildOutlineShape(-PACK_H / 2, PACK_H / 2, true, true),
+    { depth: CORE_D, bevelEnabled: false }
+  );
+  coreGeo.translate(0, 0, -CORE_D / 2);
+  disposables.push(coreGeo);
+  const core = new THREE.Mesh(coreGeo, coreMaterial);
+  group.add(core);
+
+  const { geo: sheetGeo } = buildSheetGeometry(-PACK_H / 2, PACK_H / 2);
+  const front = new THREE.Mesh(sheetGeo, makeSheetMaterial(createWrapperTexture('whole', false)));
+  group.add(front);
+  const back = new THREE.Mesh(sheetGeo, makeSheetMaterial(createWrapperTexture('whole', true)));
+  back.rotation.y = Math.PI;
+  group.add(back);
+
+  group.userData.sheets = [front, back];
+  return group;
+}
+
+// Potongan sobekan (strip atas + badan) — dibuat sekali, dipakai pack aktif
+function buildTearPieces() {
+  // Strip atas: crimp + gerigi atas, tepi bawah = garis sobek
+  const stripGroup = new THREE.Group();
+  const stripCoreGeo = new THREE.ExtrudeGeometry(
+    buildOutlineShape(TEAR_Y, PACK_H / 2, false, true),
+    { depth: CORE_D, bevelEnabled: false }
+  );
+  const stripCenterY = (TEAR_Y + PACK_H / 2) / 2;
+  stripCoreGeo.translate(0, -stripCenterY, -CORE_D / 2);
+  disposables.push(stripCoreGeo);
+  stripGroup.add(new THREE.Mesh(stripCoreGeo, coreMaterial));
+  {
+    const { geo } = buildSheetGeometry(TEAR_Y, PACK_H / 2);
+    geo.translate(0, 0, 0); // geometry lokal sudah centered di plane
+    const front = new THREE.Mesh(geo, makeSheetMaterial(createWrapperTexture('strip', false)));
+    const back = new THREE.Mesh(geo, makeSheetMaterial(createWrapperTexture('strip', true)));
+    back.rotation.y = Math.PI;
+    stripGroup.add(front, back);
+    stripGroup.userData.sheets = [front, back];
+  }
+  stripGroup.userData.baseY = stripCenterY;
+  stripGroup.position.y = stripCenterY;
+
+  // Badan: dari bawah sampai garis sobek
+  const bodyGroup = new THREE.Group();
+  const bodyCoreGeo = new THREE.ExtrudeGeometry(
+    buildOutlineShape(-PACK_H / 2, TEAR_Y, true, false),
+    { depth: CORE_D, bevelEnabled: false }
+  );
+  const bodyCenterY = (-PACK_H / 2 + TEAR_Y) / 2;
+  bodyCoreGeo.translate(0, -bodyCenterY, -CORE_D / 2);
+  disposables.push(bodyCoreGeo);
+  bodyGroup.add(new THREE.Mesh(bodyCoreGeo, coreMaterial));
+  {
+    const { geo } = buildSheetGeometry(-PACK_H / 2, TEAR_Y);
+    const front = new THREE.Mesh(geo, makeSheetMaterial(createWrapperTexture('body', false)));
+    const back = new THREE.Mesh(geo, makeSheetMaterial(createWrapperTexture('body', true)));
+    back.rotation.y = Math.PI;
+    bodyGroup.add(front, back);
+    bodyGroup.userData.sheets = [front, back];
+  }
+  bodyGroup.userData.baseY = bodyCenterY;
+  bodyGroup.position.y = bodyCenterY;
+
+  return { stripGroup, bodyGroup };
+}
+
+// Cahaya emas bocor dari garis sobekan (intensitas ∝ progress)
+function buildLeakMesh() {
+  const canvas = document.createElement('canvas');
+  canvas.width = 256; canvas.height = 64;
+  const ctx = canvas.getContext('2d');
+  const g = ctx.createRadialGradient(128, 32, 4, 128, 32, 128);
+  g.addColorStop(0, 'rgba(255,248,220,1)');
+  g.addColorStop(0.35, 'rgba(252,211,77,0.8)');
+  g.addColorStop(1, 'rgba(245,158,11,0)');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, 256, 64);
+  const tex = new THREE.CanvasTexture(canvas);
+  disposables.push(tex);
+  const mat = new THREE.MeshBasicMaterial({
+    map: tex, transparent: true, opacity: 0,
+    blending: THREE.AdditiveBlending, depthWrite: false,
+  });
+  disposables.push(mat);
+  const geo = new THREE.PlaneGeometry(PACK_W * 1.05, 0.3);
+  disposables.push(geo);
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.position.set(0, TEAR_Y, CORE_D / 2 + 0.02);
+  return mesh;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// CAROUSEL PILIH PACK
+// ═══════════════════════════════════════════════════════════════
+const SELECT_COUNT = 4;
+const RING_R = 1.7;
+let carouselGroup = null;
+let packUnits = [];         // unit pouch di carousel (index 0 = pack utama)
+let carouselAngle = 0;
+let spinVel = 0;
+let focusAnim = null;       // { chosen, t, others }
+const raycaster = new THREE.Raycaster();
+const pointerNdc = new THREE.Vector2();
+
+function enterCarousel() {
+  if (!scene || carouselGroup || !packGroup) return;
+  focusedPack.value = false;
+  carouselGroup = new THREE.Group();
+  scene.add(carouselGroup);
+
+  // Pack utama ikut masuk carousel + tambahan unit baru
+  packGroup.visible = false;
+  packUnits = [];
+  for (let i = 0; i < SELECT_COUNT; i++) {
+    const unit = buildPouchUnit();
+    unit.userData.index = i;
+    carouselGroup.add(unit);
+    packUnits.push(unit);
+  }
+  carouselAngle = 0;
+  spinVel = 5.2; // rad/s — transisi BERPUTAR kencang, mereda ke idle
+}
+
+function exitCarousel(keepUnit) {
+  if (!carouselGroup) return;
+  packUnits.forEach((u) => {
+    if (u !== keepUnit) carouselGroup.remove(u);
+  });
+  if (keepUnit) {
+    carouselGroup.remove(keepUnit);
+    scene.add(keepUnit);
+  }
+  scene.remove(carouselGroup);
+  carouselGroup = null;
+  packUnits = [];
+}
+
+function trySelectPack(clientX, clientY) {
+  if (!carouselGroup || focusAnim) return;
+  const rect = containerRef.value.getBoundingClientRect();
+  pointerNdc.x = ((clientX - rect.left) / rect.width) * 2 - 1;
+  pointerNdc.y = -((clientY - rect.top) / rect.height) * 2 + 1;
+  raycaster.setFromCamera(pointerNdc, camera);
+  const hits = raycaster.intersectObjects(carouselGroup.children, true);
+  if (!hits.length) return;
+  let obj = hits[0].object;
+  while (obj && !packUnits.includes(obj)) obj = obj.parent;
+  if (!obj) return;
+
+  // Mulai animasi fokus: pilihan ke depan-tengah, sisanya menyingkir
+  focusedPack.value = true;
+  focusAnim = {
+    chosen: obj,
+    t: 0,
+    starts: new Map(packUnits.map((u) => [u, {
+      pos: u.position.clone(),
+      rot: u.rotation.y,
+      scale: u.scale.x,
+    }])),
+  };
+}
+
+// ═══════════════════════════════════════════════════════════════
+// SCENE
+// ═══════════════════════════════════════════════════════════════
 function initScene() {
   if (!containerRef.value) return;
   const w = containerRef.value.clientWidth;
@@ -736,7 +751,7 @@ function initScene() {
 
   scene = new THREE.Scene();
   camera = new THREE.PerspectiveCamera(50, w / h, 0.1, 100);
-  camera.position.z = 5;
+  camera.position.z = baseCamZ = 5;
 
   renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
   renderer.setSize(w, h);
@@ -744,132 +759,128 @@ function initScene() {
   renderer.setClearColor(0x000000, 0);
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   containerRef.value.appendChild(renderer.domElement);
-
-  // Ensure canvas receives touch events properly on mobile
   renderer.domElement.style.touchAction = 'none';
 
-  // Environment map — foil metalik pack memantulkan "ruangan" (per-renderer,
-  // render target PMREM terikat context ini)
+  // Environment map — refleksi lingkungan dijaga rendah supaya foil hitam
+  // tetap pekat (terlalu kuat = pack terlihat abu-abu)
   envTexture = createEnvironmentTexture(renderer);
   scene.environment = envTexture;
-  scene.environmentIntensity = 0.75;
+  scene.environmentIntensity = 0.55;
 
-  // ── Dramatic lighting for foil pack ────────────────────
-  scene.add(new THREE.AmbientLight(0xffffff, 0.50));
-  const mainLight = new THREE.DirectionalLight(0xffffff, 1.15);
+  // Lighting dramatis emas
+  scene.add(new THREE.AmbientLight(0xffffff, 0.45));
+  const mainLight = new THREE.DirectionalLight(0xffffff, 1.2);
   mainLight.position.set(3, 5, 8);
   scene.add(mainLight);
-  const rimLight = new THREE.DirectionalLight(0x7C3AED, 0.50);
-  rimLight.position.set(-3, -2, 4);
-  scene.add(rimLight);
-  const goldRim = new THREE.DirectionalLight(0xF59E0B, 0.35);
-  goldRim.position.set(2, -3, 5);
+  const goldRim = new THREE.DirectionalLight(0xF59E0B, 0.75);
+  goldRim.position.set(-4, -2, 4);
   scene.add(goldRim);
-  // Top-down accent light to catch the crimp seal
-  const topAccent = new THREE.DirectionalLight(0xffffff, 0.40);
+  const goldRim2 = new THREE.DirectionalLight(0xFCD34D, 0.45);
+  goldRim2.position.set(4, -3, 5);
+  scene.add(goldRim2);
+  const topAccent = new THREE.DirectionalLight(0xffffff, 0.4);
   topAccent.position.set(0, 6, 1);
   scene.add(topAccent);
 
-  packGroup = new THREE.Group();
-  scene.add(packGroup);
+  // Pack utama (idle & tear) — texture menggambar wordmark, jadi WAJIB
+  // menunggu font siap dulu (kalau tidak, MEMECATS ter-render font sistem)
+  ensureFontsLoaded().then(() => {
+    if (!scene) return;
+    packGroup = new THREE.Group();
+    scene.add(packGroup);
+    packWhole = buildPouchUnit();
+    packGroup.add(packWhole);
 
-  // ── Generate all 6 unique textures ─────────────────────
-  const frontTex = createPackFrontTexture();
-  const backTex = createPackBackTexture();
-  const sideTex = createPackSideTexture();
-  const topTex = createPackTopTexture();
-  const bottomTex = createPackBottomTexture();
+    const pieces = buildTearPieces();
+    packTopHalf = pieces.stripGroup;
+    packBottomHalf = pieces.bodyGroup;
+    packTopHalf.visible = false;
+    packBottomHalf.visible = false;
+    packGroup.add(packTopHalf, packBottomHalf);
 
-  // ── Foil-like materials (high metalness, low roughness) ─
-  const frontMat = new THREE.MeshStandardMaterial({
-    map: frontTex,
-    roughness: 0.22,
-    metalness: 0.55,
-    emissive: new THREE.Color(0x2D1B69),
-    emissiveIntensity: 0.08,
+    leakMesh = buildLeakMesh();
+    leakMesh.visible = false;
+    packGroup.add(leakMesh);
+
+    // Kalau user sudah keburu masuk mode pilih pack sebelum font siap
+    if (props.selectMode && !carouselGroup) enterCarousel();
   });
-  const backMat = new THREE.MeshStandardMaterial({
-    map: backTex,
-    roughness: 0.22,
-    metalness: 0.55,
-    emissive: new THREE.Color(0x0F172A),
-    emissiveIntensity: 0.05,
-  });
-  const sideMat = new THREE.MeshStandardMaterial({
-    map: sideTex,
-    roughness: 0.30,
-    metalness: 0.50,
-    emissive: new THREE.Color(0x1E293B),
-    emissiveIntensity: 0.03,
-  });
-  const topCrimpMat = new THREE.MeshStandardMaterial({
-    map: topTex,
-    roughness: 0.25,
-    metalness: 0.60,
-    emissive: new THREE.Color(0x1A0A3E),
-    emissiveIntensity: 0.06,
-  });
-  const bottomCrimpMat = new THREE.MeshStandardMaterial({
-    map: bottomTex,
-    roughness: 0.25,
-    metalness: 0.60,
-    emissive: new THREE.Color(0x1A0A3E),
-    emissiveIntensity: 0.06,
-  });
-
-  // ── BOX — pack geometry ──
-  const packGeo = new THREE.BoxGeometry(PACK_W, PACK_H, PACK_D);
-
-  // BoxGeometry face order: +X, -X, +Y, -Y, +Z, -Z
-  const packMaterials = [
-    sideMat,         // +X right side
-    sideMat,         // -X left side
-    topCrimpMat,     // +Y top crimp seal
-    bottomCrimpMat,  // -Y bottom crimp seal
-    frontMat,        // +Z front artwork
-    backMat,         // -Z back details
-  ];
-  packWhole = new THREE.Mesh(packGeo, packMaterials);
-  packGroup.add(packWhole);
-
-  // ── Rip-open pieces (BoxGeometry — hanya saat animasi sobek) ──
-  const STRIP_H = 0.34;
-  const BODY_H = PACK_H - STRIP_H;
-  const stripGeo = new THREE.BoxGeometry(PACK_W, STRIP_H, PACK_D);
-  const bodyGeo = new THREE.BoxGeometry(PACK_W, BODY_H, PACK_D);
-
-  // +X(0), -X(1), +Y(2), -Y(3), +Z(4), -Z(5)
-  const tearMats = [
-    sideMat.clone(),         // 0: +X right
-    sideMat.clone(),         // 1: -X left
-    topCrimpMat.clone(),     // 2: +Y top
-    bottomCrimpMat.clone(),  // 3: -Y bottom
-    frontMat.clone(),        // 4: +Z front
-    backMat.clone(),         // 5: -Z back
-  ];
-
-  packTopHalf = new THREE.Mesh(stripGeo, tearMats.map(m => m.clone()));
-  packTopHalf.position.y = (PACK_H / 2) - (STRIP_H / 2);
-  packTopHalf.visible = false;
-  packTopHalf.userData = { stripH: STRIP_H, bodyH: BODY_H };
-  packGroup.add(packTopHalf);
-
-  packBottomHalf = new THREE.Mesh(bodyGeo, tearMats.map(m => m.clone()));
-  packBottomHalf.position.y = -(STRIP_H / 2);
-  packBottomHalf.visible = false;
-  packGroup.add(packBottomHalf);
 
   startLoop();
 }
 
+function setPieceEmissive(group, value) {
+  group.userData.sheets?.forEach((mesh) => {
+    mesh.material.emissiveIntensity = value;
+  });
+}
+
 function animate() {
   animationId = requestAnimationFrame(animate);
-  if (!packGroup || !renderer || !scene || !camera) return;
+  if (!scene || !renderer || !camera) return;
 
-  const now = performance.now() * 0.001;
+  const nowMs = performance.now();
+  const now = nowMs * 0.001;
+  const dt = Math.min((nowMs - (lastFrameTime || nowMs)) * 0.001, 0.05);
+  lastFrameTime = nowMs;
 
-  // Idle floating
-  if (!isDragging && !isTearDragging && !props.shaking && !props.tearing && !props.tearMode) {
+  // ── CAROUSEL: pack BERPUTAR, user memilih ──
+  if (carouselGroup) {
+    if (!focusAnim) {
+      spinVel += (0.35 - spinVel) * (1 - Math.exp(-dt * 1.6)); // mereda mulus
+      carouselAngle += spinVel * dt;
+      packUnits.forEach((u, i) => {
+        const a = carouselAngle + (i * Math.PI * 2) / SELECT_COUNT;
+        const x = Math.sin(a) * RING_R;
+        const z = Math.cos(a) * RING_R - 0.9;
+        u.position.set(x, Math.sin(now * 1.6 + i * 1.7) * 0.05, z);
+        u.rotation.y = -x * 0.22;
+        const depth = (z + RING_R + 0.9) / (RING_R * 2); // 0..1
+        const s = 0.66 + depth * 0.3;
+        u.scale.set(s, s, s);
+      });
+    } else {
+      // Fokus ke pack pilihan
+      focusAnim.t = Math.min(focusAnim.t + dt * 1.6, 1);
+      const t = focusAnim.t;
+      const ease = 1 - Math.pow(1 - t, 3);
+      packUnits.forEach((u) => {
+        const s0 = focusAnim.starts.get(u);
+        if (u === focusAnim.chosen) {
+          u.position.lerpVectors(s0.pos, new THREE.Vector3(0, 0, 0.4), ease);
+          u.rotation.y = s0.rot * (1 - ease) + Math.PI * 2 * ease; // satu putaran penuh saat maju
+          const sc = s0.scale + (1.0 - s0.scale) * ease;
+          u.scale.set(sc, sc, sc);
+        } else {
+          const dir = s0.pos.x >= 0 ? 1 : -1;
+          u.position.set(
+            s0.pos.x + dir * ease * 4.5,
+            s0.pos.y - ease * 0.6,
+            s0.pos.z - ease * 2.5
+          );
+          u.rotation.y = s0.rot + ease * dir * 2.2;
+          u.userData.sheets?.forEach((m) => { m.material.opacity = 1 - ease; });
+        }
+      });
+      if (t >= 1) {
+        const chosen = focusAnim.chosen;
+        focusAnim = null;
+        exitCarousel(chosen);
+        // Pack pilihan jadi pack aktif: pindahkan visualnya ke packGroup
+        scene.remove(chosen);
+        packGroup.visible = true;
+        packWhole.visible = true;
+        packGroup.position.set(0, 0, 0.4);
+        packRotation.x = 0; packRotation.y = 0;
+        emit('pack-selected');
+      }
+    }
+  }
+
+  if (!packGroup) { renderer.render(scene, camera); return; }
+
+  // Idle floating (pack tunggal)
+  if (!carouselGroup && !isDragging && !isTearDragging && !props.shaking && !props.tearing && !props.tearMode && !props.selectMode) {
     packGroup.position.y = Math.sin(now * 1.2) * 0.05;
     rotationVelocity.x *= 0.97;
     rotationVelocity.y *= 0.97;
@@ -877,39 +888,52 @@ function animate() {
     packRotation.x += rotationVelocity.y;
   }
 
-  // Tear mode: face forward, stop rotation
+  // Tear mode: hadap depan + strip peel interaktif (SMOOTHED — bukan 1:1)
   if (props.tearMode && !props.tearing) {
-    // Gradually return to front-facing
     packRotation.x *= 0.9;
     packRotation.y *= 0.9;
+    packGroup.position.z += (0.4 - packGroup.position.z) * 0.08;
 
-    // Interactive rip progress — top strip peels sideways (Pokémon TCG Pocket style)
-    if (tearProgressPercent.value > 0.05) {
+    // Progress dirender lewat lerp: jari berhenti → strip masih "mengejar"
+    // dengan lembut; lepas → spring-back halus, tidak menyentak
+    tearP += (tearProgressPercent.value - tearP) * Math.min(dt * 14, 1);
+
+    if (tearP > 0.02) {
       packWhole.visible = false;
       packTopHalf.visible = true;
       packBottomHalf.visible = true;
+      leakMesh.visible = true;
 
-      const p = tearProgressPercent.value;
-      const strip = packTopHalf.userData.stripH || 0.34;
-      const baseY = (PACK_H / 2) - (strip / 2);
-      // Strip slides to the right, lifts up, tilts and curls as it's torn
-      packTopHalf.position.x = p * 1.9;
-      packTopHalf.position.y = baseY + p * 0.35;
-      packTopHalf.position.z = p * 0.25;
-      packTopHalf.rotation.z = -p * 0.5;
-      packTopHalf.rotation.y = p * 0.6;
+      const p = tearP;
+      const pe = easeOutQuad(p);
+      const baseY = packTopHalf.userData.baseY;
+      // Flutter: strip bergetar seperti foil sungguhan saat ditarik
+      const flutter = Math.sin(now * 17) * 0.02 * p + Math.sin(now * 31) * 0.008 * p;
 
-      // Body stays put but trembles slightly as it opens
-      packBottomHalf.position.x = Math.sin(now * 30) * p * 0.015;
+      // Strip terkelupas: naik melengkung, melintir, DAN menggulung ke belakang
+      packTopHalf.position.x = pe * 2.1;
+      packTopHalf.position.y = baseY + pe * 0.38 + flutter * 0.5;
+      packTopHalf.position.z = pe * 0.34;
+      packTopHalf.rotation.z = -pe * 0.62 + flutter;
+      packTopHalf.rotation.y = pe * 0.85;
+      packTopHalf.rotation.x = -pe * 0.38; // curl ke belakang seperti foil terkelupas
 
-      // Glow intensity based on progress (light leaking out of the opening)
-      const emissiveIntensity = p * 0.4;
-      packTopHalf.material?.forEach?.(m => { if (m.emissiveIntensity !== undefined) m.emissiveIntensity = emissiveIntensity; });
-      packBottomHalf.material?.forEach?.(m => { if (m.emissiveIntensity !== undefined) m.emissiveIntensity = emissiveIntensity; });
+      // Badan ikut miring dikit melawan tarikan + getar naik bertahap
+      packBottomHalf.position.x = Math.sin(now * 30) * p * p * 0.02;
+      packBottomHalf.rotation.z = -pe * 0.03;
+
+      // Cahaya emas bocor dari celah — ramp lembut + flicker hidup
+      const leak = clamp01((p - 0.08) / 0.92);
+      leakMesh.material.opacity = easeOutQuad(leak) * (0.8 + Math.sin(now * 21) * 0.14 + Math.sin(now * 47) * 0.06);
+      leakMesh.scale.set(0.35 + leak * 0.95, 0.4 + leak * 1.8, 1);
+
+      setPieceEmissive(packTopHalf, leak * 0.5);
+      setPieceEmissive(packBottomHalf, leak * 0.5);
     } else {
       packWhole.visible = true;
       packTopHalf.visible = false;
       packBottomHalf.visible = false;
+      leakMesh.visible = false;
     }
   }
 
@@ -923,34 +947,63 @@ function animate() {
     packRotation.y = Math.cos(now * freq * 0.6) * shakeIntensity * 0.2;
   } else {
     shakeIntensity = Math.max(shakeIntensity - 0.015, 0);
-    if (!isDragging && !props.tearMode) { packGroup.position.x *= 0.92; }
+    if (!isDragging && !props.tearMode && !carouselGroup) { packGroup.position.x *= 0.92; }
   }
 
-  // Tear completion animation
+  // Tear completion — BREWEK sinematik berfase:
+  // [0–0.45] RIP: strip meledak lepas berputar tumbling + camera punch
+  // [0.2–1 ] FALL: badan jatuh floaty dengan sway, cahaya meledak
   if (props.tearing) {
-    tearProgress = Math.min(tearProgress + 0.025, 1);
-    flashOpacity.value = Math.sin(tearProgress * Math.PI) * 0.7;
+    tearProgress = Math.min(tearProgress + dt / 1.5, 1);
+    const t = tearProgress;
+    const tRip = clamp01(t / 0.45);
+    const tFall = clamp01((t - 0.2) / 0.8);
 
-    const s = 1 - tearProgress * 0.4;
+    flashOpacity.value = Math.sin(clamp01(t * 1.6) * Math.PI) * 0.9;
+
+    // Camera punch tajam di momen rip, lalu kembali mulus
+    camera.position.z = baseCamZ - Math.sin(clamp01(t * 2.4) * Math.PI) * 0.5;
+
+    // Group menyusut belakangan saja (biarkan momen rip terbaca dulu)
+    const shrink = easeInCubic(clamp01((t - 0.35) / 0.65));
+    const s = 1 - shrink * 0.42;
     packGroup.scale.set(s, s, s);
-    packGroup.rotation.z = tearProgress * 0.4;
-    packGroup.position.y = tearProgress * -0.8;
+    packGroup.rotation.z = shrink * 0.35;
+    packGroup.position.y = -shrink * 0.7;
 
-    // Strip flies off to the side, body drops away
     if (packTopHalf.visible) {
-      const strip = packTopHalf.userData.stripH || 0.34;
-      const baseY = (PACK_H / 2) - (strip / 2);
-      packTopHalf.position.x = 1.9 + tearProgress * 5;
-      packTopHalf.position.y = baseY + tearProgress * 2;
-      packTopHalf.rotation.z = -0.5 - tearProgress * 2;
-      packTopHalf.rotation.y = 0.6 + tearProgress * 2;
-      packBottomHalf.position.y = -(strip / 2) - tearProgress * 3;
-      packBottomHalf.rotation.x = tearProgress * 0.4;
+      const baseY = packTopHalf.userData.baseY;
+      const rip = easeOutCubic(tRip);
+      // Strip terbang parabola (naik lalu turun) sambil tumbling liar
+      packTopHalf.position.x = 2.1 + rip * 6.5;
+      packTopHalf.position.y = baseY + 0.38 + 3.0 * rip - 2.3 * rip * rip;
+      packTopHalf.position.z = 0.34 + rip * 1.2;
+      packTopHalf.rotation.z = -0.62 - rip * 3.4;
+      packTopHalf.rotation.y = 0.85 + rip * 4.2;
+      packTopHalf.rotation.x = -0.38 - rip * 2.2;
+
+      // Badan jatuh floaty: mulai pelan, akselerasi, dengan sway kertas
+      const fall = easeInCubic(tFall);
+      const sway = Math.sin(tFall * 7) * 0.07 * (1 - tFall);
+      packBottomHalf.position.y = packBottomHalf.userData.baseY - fall * 3.4;
+      packBottomHalf.position.x = sway;
+      packBottomHalf.rotation.x = 0.12 + fall * 0.55;
+      packBottomHalf.rotation.z = sway * 1.6;
+
+      // Ledakan cahaya dari mulut pack — memuncak cepat lalu memudar
+      leakMesh.visible = true;
+      const burst = Math.sin(clamp01(t * 1.8) * Math.PI);
+      leakMesh.material.opacity = burst * 1.25;
+      leakMesh.scale.set(1.1 + burst * 2.6, 1.6 + burst * 5.5, 1);
+      setPieceEmissive(packTopHalf, 0.5 + burst * 0.7);
+      setPieceEmissive(packBottomHalf, 0.5 + burst * 0.7);
     }
 
-    if (tearProgress > 0.7) { packGroup.visible = tearProgress < 0.95; }
-
-    if (tearProgress >= 1) { emit('tear-animation-complete'); }
+    if (t > 0.75) { packGroup.visible = t < 0.96; }
+    if (t >= 1) {
+      camera.position.z = baseCamZ;
+      emit('tear-animation-complete');
+    }
   }
 
   packGroup.rotation.x = packRotation.x;
@@ -959,88 +1012,85 @@ function animate() {
   renderer.render(scene, camera);
 }
 
-// Drag handlers — direct 1:1 finger tracking (TCG-style)
+// ═══════════════════════════════════════════════════════════════
+// INPUT — drag rotasi / drag sobek / drag carousel / tap pilih
+// ═══════════════════════════════════════════════════════════════
 let dragStartRotation = { x: 0, y: 0 };
 let dragStartMouse = { x: 0, y: 0 };
-const DRAG_ROTATE_FACTOR = 0.008; // direct mapping: pixel delta → radians
+let dragTotalMove = 0;
+const DRAG_ROTATE_FACTOR = 0.008;
+const TAP_THRESHOLD = 8;
 
 function onDragStart(e) {
-  if (props.tearMode && !props.tearing) {
+  dragTotalMove = 0;
+  dragStartMouse = { x: e.clientX, y: e.clientY };
+  if (props.selectMode && carouselGroup) {
+    isDragging = true;
+  } else if (props.tearMode && !props.tearing) {
     isTearDragging = true;
     tearStartX = e.clientX;
   } else if (!props.tearMode) {
     isDragging = true;
     dragStartRotation = { x: packRotation.x, y: packRotation.y };
-    dragStartMouse = { x: e.clientX, y: e.clientY };
   }
   prevMouse = { x: e.clientX, y: e.clientY };
 }
 
 function onTouchStart(e) {
   if (e.touches.length !== 1) return;
-  if (props.tearMode && !props.tearing) {
-    isTearDragging = true;
-    tearStartX = e.touches[0].clientX;
-  } else if (!props.tearMode) {
-    isDragging = true;
-    dragStartRotation = { x: packRotation.x, y: packRotation.y };
-    dragStartMouse = { x: e.touches[0].clientX, y: e.touches[0].clientY };
-  }
-  prevMouse = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+  onDragStart({ clientX: e.touches[0].clientX, clientY: e.touches[0].clientY });
 }
 
-function onDragMove(e) {
-  if (isTearDragging) {
-    const dx = e.clientX - tearStartX;
+function handleMove(clientX, clientY) {
+  dragTotalMove += Math.abs(clientX - prevMouse.x) + Math.abs(clientY - prevMouse.y);
+  if (props.selectMode && carouselGroup && isDragging && !focusAnim) {
+    // Drag memutar carousel
+    const dx = clientX - prevMouse.x;
+    carouselAngle += dx * 0.008;
+    spinVel = dx * 0.28;
+  } else if (isTearDragging) {
+    const dx = clientX - tearStartX;
     const progress = Math.max(0, Math.min(1, dx / TEAR_THRESHOLD));
     tearProgressPercent.value = progress;
     emit('tear-progress', progress);
   } else if (isDragging) {
-    // Direct 1:1 mapping: finger delta → rotation (no velocity lag)
-    const dx = e.clientX - dragStartMouse.x;
-    const dy = e.clientY - dragStartMouse.y;
+    const dx = clientX - dragStartMouse.x;
+    const dy = clientY - dragStartMouse.y;
     packRotation.y = dragStartRotation.y + dx * DRAG_ROTATE_FACTOR;
     packRotation.x = dragStartRotation.x + dy * DRAG_ROTATE_FACTOR;
-    // Store velocity for decay after release
-    rotationVelocity.x = (e.clientX - prevMouse.x) * 0.008;
-    rotationVelocity.y = (e.clientY - prevMouse.y) * 0.008;
-    prevMouse = { x: e.clientX, y: e.clientY };
+    rotationVelocity.x = (clientX - prevMouse.x) * 0.008;
+    rotationVelocity.y = (clientY - prevMouse.y) * 0.008;
   }
+  prevMouse = { x: clientX, y: clientY };
 }
 
+function onDragMove(e) { if (isDragging || isTearDragging) handleMove(e.clientX, e.clientY); }
 function onTouchMove(e) {
   if (e.touches.length !== 1) return;
-  if (isTearDragging) {
-    const dx = e.touches[0].clientX - tearStartX;
-    const progress = Math.max(0, Math.min(1, dx / TEAR_THRESHOLD));
-    tearProgressPercent.value = progress;
-    emit('tear-progress', progress);
-  } else if (isDragging) {
-    // Direct 1:1 mapping: finger delta → rotation (no velocity lag)
-    const dx = e.touches[0].clientX - dragStartMouse.x;
-    const dy = e.touches[0].clientY - dragStartMouse.y;
-    packRotation.y = dragStartRotation.y + dx * DRAG_ROTATE_FACTOR;
-    packRotation.x = dragStartRotation.x + dy * DRAG_ROTATE_FACTOR;
-    // Store velocity for decay after release
-    rotationVelocity.x = (e.touches[0].clientX - prevMouse.x) * 0.015;
-    rotationVelocity.y = (e.touches[0].clientY - prevMouse.y) * 0.015;
-    prevMouse = { x: e.touches[0].clientX, y: e.touches[0].clientY };
-  }
+  if (isDragging || isTearDragging) handleMove(e.touches[0].clientX, e.touches[0].clientY);
 }
 
-function onDragEnd() {
+function finishDrag(clientX, clientY) {
+  if (props.selectMode && carouselGroup && isDragging) {
+    // Tap (bukan drag) = pilih pack
+    if (dragTotalMove < TAP_THRESHOLD) trySelectPack(clientX, clientY);
+  }
   if (isTearDragging) {
     if (tearProgressPercent.value >= 0.70) {
-      // Tear complete!
       tearProgressPercent.value = 1;
       emit('tear-drag-complete');
     } else {
-      // Spring back
       tearProgressPercent.value = 0;
     }
     isTearDragging = false;
   }
   isDragging = false;
+}
+
+function onDragEnd(e) { finishDrag(e?.clientX ?? prevMouse.x, e?.clientY ?? prevMouse.y); }
+function onTouchEnd(e) {
+  const t = e.changedTouches?.[0];
+  finishDrag(t?.clientX ?? prevMouse.x, t?.clientY ?? prevMouse.y);
 }
 
 function onResize() {
@@ -1055,14 +1105,21 @@ function onResize() {
 
 function cleanup() {
   stopLoop();
+  disposables.forEach((d) => d?.dispose?.());
+  disposables.length = 0;
   envTexture?.dispose();
   envTexture = null;
   if (renderer) { renderer.dispose(); renderer.forceContextLoss(); }
-  scene = camera = renderer = packGroup = packWhole = packTopHalf = packBottomHalf = null;
+  scene = camera = renderer = packGroup = packWhole = packTopHalf = packBottomHalf = leakMesh = null;
+  carouselGroup = null;
+  packUnits = [];
 }
 
 function startLoop() {
-  if (animationId === null && renderer) animationId = requestAnimationFrame(animate);
+  if (animationId === null && renderer) {
+    lastFrameTime = 0;
+    animationId = requestAnimationFrame(animate);
+  }
 }
 
 function stopLoop() {
@@ -1075,17 +1132,36 @@ function syncLoopState() {
   else stopLoop();
 }
 
+watch(() => props.selectMode, (val) => {
+  if (val) enterCarousel();
+  else if (carouselGroup && !focusAnim) {
+    exitCarousel(null);
+    packGroup.visible = true;
+  }
+});
+
 watch(() => props.tearing, (val) => {
-  if (val) { tearProgress = 0; if (packGroup) { packGroup.visible = true; packGroup.scale.set(1,1,1); } }
+  if (val) {
+    tearProgress = 0;
+    if (packGroup) { packGroup.visible = true; packGroup.scale.set(1, 1, 1); }
+    // Auto-tear: drag manual belum sempat memunculkan potongan — paksa
+    // terlihat supaya animasi strip/badan tetap jalan
+    if (packWhole && packTopHalf && packBottomHalf) {
+      packWhole.visible = false;
+      packTopHalf.visible = true;
+      packBottomHalf.visible = true;
+    }
+  }
 });
 
 watch(() => props.tearMode, (val) => {
   if (val) {
     tearProgressPercent.value = 0;
-    // Ensure halves start hidden
+    tearP = 0;
     if (packTopHalf) packTopHalf.visible = false;
     if (packBottomHalf) packBottomHalf.visible = false;
     if (packWhole) packWhole.visible = true;
+    if (leakMesh) leakMesh.visible = false;
   }
 });
 
@@ -1102,6 +1178,9 @@ onMounted(() => {
         syncLoopState();
       });
       intersectionObserver.observe(containerRef.value);
+      // Renderer ikut resize saat kontainer berubah (kotak → fullscreen)
+      resizeObserver = new ResizeObserver(() => onResize());
+      resizeObserver.observe(containerRef.value);
     }
   });
   window.addEventListener('resize', onResize);
@@ -1112,6 +1191,8 @@ onBeforeUnmount(() => {
   document.removeEventListener('visibilitychange', onVisibilityChange);
   intersectionObserver?.disconnect();
   intersectionObserver = null;
+  resizeObserver?.disconnect();
+  resizeObserver = null;
   cleanup();
 });
 

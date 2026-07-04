@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <title>Pack Preview — pouch foil (dev tool)</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Outfit:wght@400;500;600;700;800&family=Cinzel:wght@700;800;900&display=swap" rel="stylesheet" />
+  <style>
+    body { background: #070B1A; color: #fff; font-family: sans-serif; margin: 0; }
+    #stage { width: 560px; height: 640px; margin: 12px auto; }
+    p { text-align: center; font-size: 12px; color: #94A3B8; }
+  </style>
+</head>
+<body>
+  <p id="label">Pack preview</p>
+  <div id="stage"></div>
+  <script type="module">
+    import { createApp, h } from 'vue';
+    import GachaPack from '/src/components/GachaPack.vue';
+
+    // ?mode=select → carousel pilih pack; default = idle pack tunggal
+    const mode = new URLSearchParams(location.search).get('mode') || 'idle';
+    document.getElementById('label').textContent = `Pack preview — mode: ${mode}`;
+
+    createApp({
+      render() {
+        return h(GachaPack, {
+          selectMode: mode === 'select',
+          tearMode: mode === 'tear',
+          style: 'display:block;width:100%;height:100%;',
+        });
+      },
+    }).mount('#stage');
+  </script>
+</body>
+</html>
