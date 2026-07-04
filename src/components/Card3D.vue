@@ -30,6 +30,15 @@
       :style="glossStyle"
     />
 
+    <!-- Reveal flash (kilat putih saat kartu berbalik di momen reveal) -->
+    <div
+      v-if="revealFlash > 0.01"
+      class="absolute inset-0 z-30 pointer-events-none"
+      :style="{
+        background: `radial-gradient(circle, rgba(255,255,255,${0.85 * revealFlash}) 0%, rgba(255,244,214,${0.3 * revealFlash}) 45%, transparent 75%)`,
+      }"
+    />
+
     <!-- Rarity particle ring (Legendary only, CSS-based) -->
     <div v-if="props.rarity === 'Legendary' && !textureLoading"
       class="absolute inset-0 z-0 pointer-events-none">
@@ -61,7 +70,15 @@
 <script setup>
 import { ref, watch, computed, onMounted, onBeforeUnmount, nextTick } from 'vue';
 import * as THREE from 'three';
+import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { drawCardCanvas } from '@/utils/cardRenderer.js';
+import { getQualityConfig } from '@/utils/quality.js';
+import { createEnvironmentTexture } from '@/utils/threeEnv.js';
+
+const quality = getQualityConfig();
 
 const props = defineProps({
   imageUrl: { type: String, default: '' },
@@ -81,6 +98,9 @@ const props = defineProps({
   imgZoom: { type: Number, default: 1.0 },
   imgOffsetX: { type: Number, default: 0.0 },
   imgOffsetY: { type: Number, default: 0.0 },
+  // Mode reveal gacha: kartu masuk menghadap belakang lalu flip sinematik
+  // (god-rays untuk Legendary, bloom pulse sesuai quality tier)
+  revealMode: { type: Boolean, default: false },
 });
 
 const emit = defineEmits(['flip-start', 'flip-complete', 'click', 'zoom-change']);
@@ -100,13 +120,32 @@ const glossStyle = computed(() => ({
 // Three.js refs
 let scene, camera, renderer;
 let cardGroup, cardFrontMesh, cardBackMesh;
+let cardGeo = null;
 let frontTexture, backTexture, customShaderMaterial;
+let envTexture = null;
 let animationId = null;
 let isFlipped = false;
 let flipStartTime = 0;
 let flipDuration = 600;
 let isFlipping = false;
 let particlesMesh = null;
+
+// RAF lifecycle — loop hanya jalan saat kartu terlihat & tab aktif
+let isInViewport = true;
+let intersectionObserver = null;
+let lastActivityTime = 0; // untuk idle demotion ke 30fps
+let idleFrameToggle = false;
+
+// === CINEMATIC REVEAL state ===
+const revealFlash = ref(0);      // 0..1, dirender sebagai overlay kilat putih
+let revealActive = false;        // sekuens sedang berjalan (blokir tap flip)
+let revealTimers = [];
+let composer = null;             // EffectComposer — hanya dibuat saat revealMode + bloom diizinkan
+let bloomPass = null;
+let bloomTarget = 0;             // strength dituju (di-lerp di animate)
+let raysMesh = null;             // quad god-rays additive di belakang kartu (Legendary)
+let raysOpacity = 0;
+let raysTarget = 0;
 
 const getFoilStyleId = (style, rarity) => {
   const s = style || 'Standard';
@@ -194,6 +233,8 @@ function initParticles() {
   } else if (rarity === 'Rare' || rarity === 'Epic' || rarity === 'Legendary') {
     particleCount = cfg.particleCount;
   }
+  // Quality tier: kurangi/matikan particle di device low-end
+  particleCount = Math.floor(particleCount * quality.particleScale);
   if (particleCount === 0) return;
 
   const geometry = new THREE.BufferGeometry();
@@ -914,10 +955,10 @@ function initScene() {
   camera = new THREE.PerspectiveCamera(40, width / height, 0.1, 100);
   camera.position.z = props.mode === 'mini' ? 8.5 : 7.5;
 
-  // Renderer
+  // Renderer — DPR di-cap sesuai quality tier
   renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
   renderer.setSize(width, height);
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, props.mode === 'mini' ? 1.5 : 2));
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, props.mode === 'mini' ? quality.dprMini : quality.dpr));
   renderer.setClearColor(0x000000, 0);
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   containerRef.value.appendChild(renderer.domElement);
@@ -925,16 +966,58 @@ function initScene() {
   // Ensure canvas receives touch events properly on mobile
   renderer.domElement.style.touchAction = 'none';
 
-  // Lighting — intensity and color vary per rarity
-  const rCfg = rarityConfig[props.rarity] || rarityConfig.Common;
-  const ambientLight = new THREE.AmbientLight(0xffffff, rCfg.ambientIntensity);
+  // Environment map (RoomEnvironment via PMREM) — bikin foil/metal beneran
+  // memantulkan "ruangan", bukan cuma directional light. Per-renderer karena
+  // render target PMREM terikat ke context ini.
+  envTexture = createEnvironmentTexture(renderer);
+  scene.environment = envTexture;
+  scene.environmentIntensity = 0.85;
+
+  // Lighting — intensity and color vary per rarity (di-update ulang oleh
+  // updateLights() saat rarity berubah tanpa remount)
+  const ambientLight = new THREE.AmbientLight(0xffffff, 1.0);
   scene.add(ambientLight);
 
   const mainLight = new THREE.DirectionalLight(0xffffff, 1.1);
   mainLight.position.set(3, 4, 8);
   scene.add(mainLight);
 
-  // Rarity-specific rim light colors
+  const rimLight = new THREE.DirectionalLight(0xffffff, 0.65);
+  rimLight.position.set(-4, -2, 5);
+  scene.add(rimLight);
+
+  const topLight = new THREE.DirectionalLight(0xffffff, 0.30);
+  topLight.position.set(0, 6, 3);
+  scene.add(topLight);
+
+  // Dynamic animated point light that orbits the card (rarity-colored)
+  // Dimatikan di tier low (quality.dynLight)
+  const dynLight = new THREE.PointLight(0xffffff, 0.0, 12);
+  dynLight.position.set(2, 1, 3);
+  scene.add(dynLight);
+  scene.userData.ambientLight = ambientLight;
+  scene.userData.rimLight = rimLight;
+  scene.userData.topLight = topLight;
+  scene.userData.dynLight = dynLight;
+  scene.userData.dynLightStartTime = performance.now();
+  updateLights();
+
+  // Card group
+  cardGroup = new THREE.Group();
+  scene.add(cardGroup);
+
+  // Card geometry (module-level: dipakai ulang saat rebuild)
+  cardGeo = new THREE.BoxGeometry(3.0, 4.2, 0.06, 1, 1, 1);
+
+  loadAndBuildCard();
+  startLoop();
+}
+
+// Sinkronkan warna/intensitas lampu dengan rarity saat ini
+// (dipanggil saat init & setiap kartu berganti in-place)
+function updateLights() {
+  if (!scene) return;
+  const rCfg = rarityConfig[props.rarity] || rarityConfig.Common;
   const rimColors = {
     Common:    0x94A3B8,
     Rare:      0x06B6D4,
@@ -942,44 +1025,72 @@ function initScene() {
     Legendary: 0xF59E0B,
   };
   const rimColor = rimColors[props.rarity] || 0x6366f1;
-  const rimLight = new THREE.DirectionalLight(rimColor, 0.65);
-  rimLight.position.set(-4, -2, 5);
-  scene.add(rimLight);
 
-  const topLight = new THREE.DirectionalLight(rimColor, 0.30);
-  topLight.position.set(0, 6, 3);
-  scene.add(topLight);
+  scene.userData.ambientLight.intensity = rCfg.ambientIntensity;
+  scene.userData.rimLight.color.setHex(rimColor);
+  scene.userData.topLight.color.setHex(rimColor);
 
-  // Dynamic animated point light that orbits the card (rarity-colored)
-  const dynLight = new THREE.PointLight(rimColor, props.rarity === 'Legendary' ? 1.8 : props.rarity === 'Epic' ? 1.2 : props.rarity === 'Rare' ? 0.8 : 0.0, 12);
-  dynLight.position.set(2, 1, 3);
-  scene.add(dynLight);
-  // Store reference for animation
-  scene.userData.dynLight = dynLight;
-  scene.userData.dynLightStartTime = performance.now();
+  const dyn = scene.userData.dynLight;
+  dyn.color.setHex(rimColor);
+  dyn.intensity = !quality.dynLight ? 0.0
+    : props.rarity === 'Legendary' ? 1.8
+    : props.rarity === 'Epic' ? 1.2
+    : props.rarity === 'Rare' ? 0.8
+    : 0.0;
+}
 
-  // Card group
-  cardGroup = new THREE.Group();
-  scene.add(cardGroup);
+function disposeCardMesh() {
+  if (!cardFrontMesh) return;
+  cardGroup?.remove(cardFrontMesh);
+  const mats = Array.isArray(cardFrontMesh.material) ? cardFrontMesh.material : [cardFrontMesh.material];
+  const seen = new Set();
+  for (const m of mats) {
+    // customShaderMaterial dipakai ulang antar rebuild — jangan di-dispose di sini
+    if (!m || seen.has(m) || m === customShaderMaterial) continue;
+    seen.add(m);
+    m.dispose();
+  }
+  cardFrontMesh = null;
+}
 
-  // Card geometry
-  const cardGeo = new THREE.BoxGeometry(3.0, 4.2, 0.06, 1, 1, 1);
+function disposeParticles() {
+  if (!particlesMesh) return;
+  cardGroup?.remove(particlesMesh);
+  particlesMesh.geometry?.dispose();
+  if (particlesMesh.material) {
+    particlesMesh.material.map?.dispose();
+    particlesMesh.material.dispose();
+  }
+  particlesMesh = null;
+}
 
-// Back texture
-  backTexture = createCardBackTexture(props.rarity);
+// Muat artwork lalu bangun/bangun-ulang mesh kartu di scene yang sama.
+// Ini pengganti pola remount (":key" per kartu): WebGL context, renderer,
+// dan env map tetap hidup — hanya texture/material/particle yang diganti.
+let buildRequestId = 0;
+function loadAndBuildCard() {
+  if (!cardGroup) return;
+  const requestId = ++buildRequestId; // tangkal race saat props berubah cepat
+  const loader = new THREE.TextureLoader();
+  const placeholderUrl = `/placeholders/${props.rarity.toLowerCase()}-placeholder.svg`;
+  const texUrl = props.imageUrl || placeholderUrl;
 
-  const backMat = new THREE.MeshStandardMaterial({
-    map: backTexture,
-    roughness: 0.6,
-    metalness: 0.15,
-  });
+  loader.load(
+    texUrl,
+    (tex) => { if (requestId === buildRequestId) buildCardFace(tex.image); },
+    undefined,
+    () => { if (requestId === buildRequestId) buildCardFace(null); }
+  );
+}
 
-  // Front configuration
+function buildCardFace(image) {
+  if (!cardGroup) return;
   const cfg = resolveConfig();
+
+  // Sync shader uniforms dengan props terkini
   shaderUniforms.uFoilIntensity.value = cfg.foilIntensity;
   shaderUniforms.uBorderColor.value = new THREE.Color(cfg.borderColor);
   shaderUniforms.uBorderWidth.value = cfg.borderWidth;
-  
   let rarityId = 0.0;
   if (props.rarity === 'Epic') rarityId = 1.0;
   else if (props.rarity === 'Legendary') rarityId = 2.0;
@@ -988,121 +1099,241 @@ function initScene() {
   const isBleed = props.foilStyle === 'Full Art ex' || props.foilStyle === 'Secret Gold' || props.foilStyle === 'Special Illustration';
   shaderUniforms.uIsBleed.value = isBleed ? 1.0 : 0.0;
 
-  const needsShader = props.foilStyle !== 'Standard' || props.rarity === 'Rare' || props.rarity === 'Epic' || props.rarity === 'Legendary';
+  // Front texture (frame kartu digambar prosedural di canvas)
+  const canvas = drawCardCanvas({
+    name: props.name,
+    description: props.description,
+    rarity: props.rarity,
+    hypeScore: props.hypeScore,
+    likesPerSec: props.likesPerSec,
+    element: props.element,
+    foilStyle: props.foilStyle,
+    imgZoom: props.imgZoom,
+    imgOffsetX: props.imgOffsetX,
+    imgOffsetY: props.imgOffsetY
+  }, image);
+  const canvasTex = new THREE.CanvasTexture(canvas);
+  canvasTex.colorSpace = THREE.SRGBColorSpace;
 
-  const loader = new THREE.TextureLoader();
-  const placeholderUrl = `/placeholders/${props.rarity.toLowerCase()}-placeholder.svg`;
-  const texUrl = props.imageUrl || placeholderUrl;
+  // Back texture per rarity
+  const newBackTexture = createCardBackTexture(props.rarity);
+  const backMat = new THREE.MeshStandardMaterial({
+    map: newBackTexture,
+    roughness: 0.6,
+    metalness: 0.15,
+  });
 
-  loader.load(
-    texUrl,
-    (tex) => {
-      if (!cardGroup) return;
-      const canvas = drawCardCanvas({
-        name: props.name,
-        description: props.description,
-        rarity: props.rarity,
-        hypeScore: props.hypeScore,
-        likesPerSec: props.likesPerSec,
-        element: props.element,
-        foilStyle: props.foilStyle,
-        imgZoom: props.imgZoom,
-        imgOffsetX: props.imgOffsetX,
-        imgOffsetY: props.imgOffsetY
-      }, tex.image);
-
-      const canvasTex = new THREE.CanvasTexture(canvas);
-      canvasTex.colorSpace = THREE.SRGBColorSpace;
-      frontTexture = canvasTex;
-      shaderUniforms.baseTexture.value = canvasTex;
-      textureLoading.value = false;
-
-      if (needsShader) {
-        customShaderMaterial = new THREE.ShaderMaterial({
-          uniforms: shaderUniforms,
-          vertexShader,
-          fragmentShader,
-          side: THREE.FrontSide,
-        });
-
-        const edgeColor = new THREE.Color(cfg.borderColor).multiplyScalar(0.3);
-        const edgeMat = new THREE.MeshStandardMaterial({
-          color: edgeColor,
-          roughness: 0.4,
-          metalness: 0.3,
-          emissive: new THREE.Color(cfg.emissive),
-          emissiveIntensity: cfg.emissiveIntensity * 0.3,
-        });
-
-        const materials = [edgeMat, edgeMat, edgeMat, edgeMat, customShaderMaterial, backMat];
-        cardFrontMesh = new THREE.Mesh(cardGeo, materials);
-      } else {
-        const frontMat = new THREE.MeshStandardMaterial({
-          map: canvasTex,
-          roughness: cfg.roughness,
-          metalness: cfg.metalness,
-        });
-
-        const edgeMat = new THREE.MeshStandardMaterial({
-          color: new THREE.Color(cfg.borderColor).multiplyScalar(0.2),
-          roughness: 0.5,
-          metalness: 0.1,
-        });
-
-        const materials = [edgeMat, edgeMat, edgeMat, edgeMat, frontMat, backMat];
-        cardFrontMesh = new THREE.Mesh(cardGeo, materials);
-      }
-
-      cardGroup.add(cardFrontMesh);
-      if (isFlipped) cardGroup.rotation.y = Math.PI;
-
-      // Spawn stardust particles if Special Illustration
-      initParticles();
-    },
-    undefined,
-    () => {
-      if (!cardGroup) return;
-      const canvas = drawCardCanvas({
-        name: props.name,
-        description: props.description,
-        rarity: props.rarity,
-        hypeScore: props.hypeScore,
-        likesPerSec: props.likesPerSec,
-        element: props.element,
-        foilStyle: props.foilStyle,
-        imgZoom: props.imgZoom,
-        imgOffsetX: props.imgOffsetX,
-        imgOffsetY: props.imgOffsetY
-      }, null);
-
-      const canvasTex = new THREE.CanvasTexture(canvas);
-      canvasTex.colorSpace = THREE.SRGBColorSpace;
-      frontTexture = canvasTex;
-      textureLoading.value = false;
-
-      const frontMat = new THREE.MeshStandardMaterial({
-        map: canvasTex,
-        roughness: cfg.roughness,
-        metalness: cfg.metalness,
+  // Front material: shader untuk foil/rare+, standard untuk sisanya
+  // (fallback tanpa artwork tetap standard, sama seperti perilaku lama)
+  const needsShader = image && (props.foilStyle !== 'Standard' || props.rarity === 'Rare' || props.rarity === 'Epic' || props.rarity === 'Legendary');
+  let frontMat;
+  let edgeMat;
+  if (needsShader) {
+    if (!customShaderMaterial) {
+      customShaderMaterial = new THREE.ShaderMaterial({
+        uniforms: shaderUniforms,
+        vertexShader,
+        fragmentShader,
+        side: THREE.FrontSide,
       });
-
-      const edgeMat = new THREE.MeshStandardMaterial({
-        color: new THREE.Color(cfg.borderColor).multiplyScalar(0.2),
-        roughness: 0.5,
-        metalness: 0.1,
-      });
-
-      const materials = [edgeMat, edgeMat, edgeMat, edgeMat, frontMat, backMat];
-      cardFrontMesh = new THREE.Mesh(cardGeo, materials);
-      cardGroup.add(cardFrontMesh);
-      if (isFlipped) cardGroup.rotation.y = Math.PI;
-
-      // Spawn stardust particles if Special Illustration
-      initParticles();
     }
-  );
+    shaderUniforms.baseTexture.value = canvasTex;
+    frontMat = customShaderMaterial;
 
-  animate();
+    edgeMat = new THREE.MeshStandardMaterial({
+      color: new THREE.Color(cfg.borderColor).multiplyScalar(0.3),
+      roughness: 0.4,
+      metalness: 0.3,
+      emissive: new THREE.Color(cfg.emissive),
+      emissiveIntensity: cfg.emissiveIntensity * 0.3,
+    });
+  } else {
+    frontMat = new THREE.MeshStandardMaterial({
+      map: canvasTex,
+      roughness: cfg.roughness,
+      metalness: cfg.metalness,
+    });
+    edgeMat = new THREE.MeshStandardMaterial({
+      color: new THREE.Color(cfg.borderColor).multiplyScalar(0.2),
+      roughness: 0.5,
+      metalness: 0.1,
+    });
+  }
+
+  // Swap mesh lama → baru
+  disposeCardMesh();
+  frontTexture?.dispose();
+  frontTexture = canvasTex;
+  backTexture?.dispose();
+  backTexture = newBackTexture;
+
+  cardFrontMesh = new THREE.Mesh(cardGeo, [edgeMat, edgeMat, edgeMat, edgeMat, frontMat, backMat]);
+  cardGroup.add(cardFrontMesh);
+  if (isFlipped && !isFlipping) cardGroup.rotation.y = Math.PI;
+
+  textureLoading.value = false;
+  markActivity();
+  updateLights();
+  disposeParticles();
+  initParticles();
+
+  // Mode reveal gacha: mainkan sekuens sinematik tiap kartu baru terpasang
+  if (props.revealMode) startRevealSequence();
+}
+
+// === CINEMATIC REVEAL (Fase 1.4) ===
+// Efek berat (bloom/god-rays) HANYA hidup di overlay reveal — grid/binder
+// tidak tersentuh. Strategi Marvel Snap: drama maksimal di momen reveal saja.
+
+function bloomAllowed() {
+  if (!props.revealMode) return false;
+  if (quality.bloom === 'off') return false;
+  if (quality.bloom === 'legendary') return props.rarity === 'Legendary';
+  return props.rarity === 'Legendary' || props.rarity === 'Epic';
+}
+
+function ensureComposer() {
+  if (composer || !renderer || !containerRef.value) return;
+  const w = containerRef.value.clientWidth;
+  const h = containerRef.value.clientHeight;
+  composer = new EffectComposer(renderer);
+  composer.addPass(new RenderPass(scene, camera));
+  bloomPass = new UnrealBloomPass(new THREE.Vector2(w, h), 0.0, 0.55, 0.80);
+  composer.addPass(bloomPass);
+  composer.addPass(new OutputPass());
+}
+
+const raysVertexShader = /* glsl */ `
+  varying vec2 vUv;
+  void main() {
+    vUv = uv;
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+  }
+`;
+
+const raysFragmentShader = /* glsl */ `
+  varying vec2 vUv;
+  uniform float uTime;
+  uniform float uOpacity;
+  uniform vec3 uColor;
+  void main() {
+    vec2 p = vUv - 0.5;
+    float r = length(p) * 2.0;
+    float angle = atan(p.y, p.x);
+    float rays = 0.55 + 0.45 * sin(angle * 9.0 + uTime * 0.6);
+    rays *= 0.70 + 0.30 * sin(angle * 5.0 - uTime * 0.4);
+    float falloff = smoothstep(1.0, 0.05, r);
+    float core = smoothstep(0.45, 0.0, r) * 0.8;
+    float a = (rays * falloff + core) * uOpacity;
+    gl_FragColor = vec4(uColor * a, a);
+  }
+`;
+
+function ensureRaysMesh() {
+  if (raysMesh || !scene) return;
+  const geo = new THREE.PlaneGeometry(9, 9);
+  const mat = new THREE.ShaderMaterial({
+    uniforms: {
+      uTime: { value: 0 },
+      uOpacity: { value: 0 },
+      uColor: { value: new THREE.Color(1.0, 0.82, 0.42) },
+    },
+    vertexShader: raysVertexShader,
+    fragmentShader: raysFragmentShader,
+    transparent: true,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+  });
+  raysMesh = new THREE.Mesh(geo, mat);
+  raysMesh.position.z = -1.4;
+  scene.add(raysMesh);
+}
+
+function clearRevealTimers() {
+  revealTimers.forEach(clearTimeout);
+  revealTimers = [];
+}
+
+function disposeRevealResources() {
+  clearRevealTimers();
+  if (raysMesh) {
+    scene?.remove(raysMesh);
+    raysMesh.geometry.dispose();
+    raysMesh.material.dispose();
+    raysMesh = null;
+  }
+  composer?.dispose();
+  composer = null;
+  bloomPass = null;
+}
+
+// Sekuens: kartu masuk menghadap belakang → (Legendary: god-rays menyala) →
+// flip dramatis → kilat + bloom pulse tepat saat wajah kartu terlihat → settle
+function startRevealSequence() {
+  clearRevealTimers();
+  revealActive = true;
+  markActivity();
+
+  // Mulai menghadap belakang, tilt netral
+  isFlipping = false;
+  isFlipped = true;
+  if (cardGroup) cardGroup.rotation.set(0, Math.PI, 0);
+  currentRotX = currentRotY = velocityX = velocityY = 0;
+  targetRotX = targetRotY = 0;
+
+  const isLegend = props.rarity === 'Legendary';
+  const isEpic = props.rarity === 'Epic';
+  flipDuration = isLegend ? 950 : isEpic ? 750 : 550;
+  const preDelay = isLegend ? 700 : isEpic ? 400 : 200;
+
+  if (bloomAllowed()) ensureComposer();
+  if (bloomPass) { bloomPass.strength = 0; bloomTarget = 0; }
+  if (isLegend && quality.bloom !== 'off') {
+    ensureRaysMesh();
+    raysTarget = 1;
+  }
+
+  revealTimers.push(setTimeout(() => {
+    toggleFlip(); // belakang → depan
+
+    // Kilat + bloom pulse tepat di tengah flip (kartu melewati 90°)
+    revealTimers.push(setTimeout(() => {
+      revealFlash.value = 1;
+      if (bloomPass) {
+        bloomPass.strength = isLegend ? 1.25 : 0.75;
+        bloomTarget = 0; // decay via lerp di animate
+      }
+    }, flipDuration * 0.5));
+
+    // Settle: rays memudar, sekuens selesai
+    revealTimers.push(setTimeout(() => {
+      raysTarget = 0;
+      revealActive = false;
+    }, flipDuration + 700));
+  }, preDelay));
+}
+
+function markActivity() {
+  lastActivityTime = performance.now();
+}
+
+function startLoop() {
+  if (animationId === null && renderer) {
+    animationId = requestAnimationFrame(animate);
+  }
+}
+
+function stopLoop() {
+  if (animationId !== null) {
+    cancelAnimationFrame(animationId);
+    animationId = null;
+  }
+}
+
+// Loop hanya jalan saat kartu di viewport DAN tab terlihat
+function syncLoopState() {
+  if (isInViewport && !document.hidden) startLoop();
+  else stopLoop();
 }
 
 function animate() {
@@ -1110,6 +1341,14 @@ function animate() {
   if (!cardGroup || !renderer || !scene || !camera) return;
 
   const now = performance.now();
+
+  // Idle demotion: tanpa interaksi/animasi aktif > 3 detik → render 30fps
+  // (skip frame selang-seling; shader shimmer tetap jalan, cuma setengah rate)
+  const interacting = isHovering || isTouchTilting || isPinching || isFlipping;
+  if (!interacting && now - lastActivityTime > 3000) {
+    idleFrameToggle = !idleFrameToggle;
+    if (idleFrameToggle) return;
+  }
 
   // Flip animation
   if (isFlipping) {
@@ -1201,7 +1440,35 @@ function animate() {
   const scaleDiff = cardScale.value - currentScale;
   renderedScale.value = currentScale + scaleDiff * 0.15;
 
-  renderer.render(scene, camera);
+  // === Reveal FX update ===
+  if (revealFlash.value > 0.01) {
+    revealFlash.value *= 0.90;
+  } else if (revealFlash.value !== 0) {
+    revealFlash.value = 0;
+  }
+  if (raysMesh) {
+    raysOpacity += (raysTarget - raysOpacity) * 0.06;
+    raysMesh.material.uniforms.uOpacity.value = raysOpacity;
+    raysMesh.material.uniforms.uTime.value = now * 0.001;
+  }
+  if (bloomPass && bloomPass.strength > 0.001) {
+    bloomPass.strength += (bloomTarget - bloomPass.strength) * 0.055;
+    if (bloomPass.strength < 0.01 && bloomTarget === 0) bloomPass.strength = 0;
+  }
+
+  // Selama sekuens reveal / FX masih hidup, jangan turunkan framerate
+  const fxActive = revealActive
+    || revealFlash.value > 0
+    || raysOpacity > 0.02
+    || (bloomPass && bloomPass.strength > 0.01);
+  if (fxActive) markActivity();
+
+  // Render: pakai composer (bloom) hanya saat FX butuh, selebihnya langsung
+  if (composer && (revealActive || (bloomPass && bloomPass.strength > 0.01))) {
+    composer.render();
+  } else {
+    renderer.render(scene, camera);
+  }
 }
 
 // Pointer interaction calculations
@@ -1210,6 +1477,7 @@ const tiltFactor = () => props.mode === 'mini' ? 0.4 : 0.7;
 function calcTilt(clientX, clientY) {
   const rect = containerRef.value?.getBoundingClientRect();
   if (!rect) return;
+  markActivity();
   const x = ((clientX - rect.left) / rect.width - 0.5) * 2;
   const y = ((clientY - rect.top) / rect.height - 0.5) * 2;
   targetRotX = x * tiltFactor();
@@ -1238,6 +1506,9 @@ let touchStartPos = { x: 0, y: 0 }; // untuk deteksi tap vs drag
 const TAP_THRESHOLD = 8; // max pixel movement untuk dianggap "tap"
 
 function onTouchStartTilt(e) {
+  // Sentuhan pertama = user gesture yang sah untuk minta izin gyro (iOS)
+  requestGyroFromGesture();
+
   // 2-finger: init pinch-to-zoom (only when allowed)
   if (e.touches.length === 2 && props.allowZoom && props.focused && props.mode !== 'mini') {
     e.preventDefault();
@@ -1303,6 +1574,8 @@ function onTouchEndTilt(e) {
   }
   if (e.touches.length === 0) {
     isTouchTilting = false;
+    // Rekalibrasi baseline gyro ke orientasi HP saat ini setelah sentuhan lepas
+    gyroBase = null;
     // Only reset targets if not also being hovered by mouse
     if (!isHovering) {
       targetRotX = 0;
@@ -1330,6 +1603,58 @@ function onPointerLeave() {
   }
 }
 
+// === GYROSCOPE TILT (mobile) ===
+// Miringkan HP → kartu ikut miring + hotspot holo bergeser, seperti memegang
+// kartu holo fisik. Baseline dikalibrasi dari orientasi saat listener aktif /
+// setelah sentuhan terakhir dilepas, jadi posisi pegang apapun jadi "netral".
+let gyroAttached = false;
+let gyroPermissionAsked = false;
+let gyroBase = null;
+const GYRO_RANGE = 25; // derajat kemiringan untuk tilt penuh
+
+function onDeviceOrientation(e) {
+  // Input pointer/touch selalu menang atas gyro
+  if (isTouchTilting || isPinching || isHovering) { gyroBase = null; return; }
+  if (e.beta == null || e.gamma == null) return;
+  if (!gyroBase) gyroBase = { beta: e.beta, gamma: e.gamma };
+
+  const dx = Math.max(-GYRO_RANGE, Math.min(GYRO_RANGE, e.gamma - gyroBase.gamma)) / GYRO_RANGE;
+  const dy = Math.max(-GYRO_RANGE, Math.min(GYRO_RANGE, e.beta - gyroBase.beta)) / GYRO_RANGE;
+
+  targetRotX = dx * tiltFactor();
+  targetRotY = -dy * tiltFactor();
+  glossX.value = 50 + dx * 50;
+  glossY.value = 50 + dy * 50;
+  if (customShaderMaterial) {
+    shaderUniforms.uMouseX.value = 0.5 + dx * 0.5;
+    shaderUniforms.uMouseY.value = 0.5 - dy * 0.5;
+  }
+  // Goyangan berarti = aktivitas (jangan turunkan ke 30fps saat kartu bergerak)
+  if (Math.abs(dx) > 0.08 || Math.abs(dy) > 0.08) markActivity();
+}
+
+function attachGyro() {
+  if (gyroAttached) return;
+  gyroAttached = true;
+  window.addEventListener('deviceorientation', onDeviceOrientation);
+}
+
+// iOS 13+ hanya mengizinkan requestPermission dari user gesture,
+// jadi dipanggil dari sentuhan pertama pada kartu
+function requestGyroFromGesture() {
+  if (gyroAttached || props.mode === 'mini') return;
+  if (typeof window.DeviceOrientationEvent === 'undefined') return;
+  if (typeof DeviceOrientationEvent.requestPermission === 'function') {
+    if (gyroPermissionAsked) return;
+    gyroPermissionAsked = true;
+    DeviceOrientationEvent.requestPermission()
+      .then((state) => { if (state === 'granted') attachGyro(); })
+      .catch(() => { /* ditolak → fallback touch-tilt yang sudah ada */ });
+  } else {
+    attachGyro();
+  }
+}
+
 function onWheel(e) {
   if (props.mode === 'mini' || !props.allowZoom || !props.focused) return;
   e.preventDefault();
@@ -1340,7 +1665,7 @@ function onWheel(e) {
 }
 
 function onClick() {
-  if (isFlipping) return;
+  if (isFlipping || revealActive) return;
   emit('click');
   if (props.allowZoom) {
     if (props.focused) {
@@ -1356,6 +1681,7 @@ function toggleFlip() {
   isFlipping = true;
   flipStartTime = performance.now();
   isFlipped = !isFlipped;
+  markActivity();
   emit('flip-start');
 }
 
@@ -1378,107 +1704,9 @@ watch(cardScale, (newVal) => {
   emit('zoom-change', newVal > 1.05);
 });
 
-// Reload/refresh textures dynamically
-function updateTexture() {
-  if (!frontTexture || !cardFrontMesh) return;
-  const cfg = resolveConfig();
-  
-  // Sync uniforms
-  if (customShaderMaterial) {
-    shaderUniforms.uFoilIntensity.value = cfg.foilIntensity;
-    shaderUniforms.uBorderColor.value = new THREE.Color(cfg.borderColor);
-    shaderUniforms.uBorderWidth.value = cfg.borderWidth;
-    let rarityId = 0.0;
-    if (props.rarity === 'Epic') rarityId = 1.0;
-    else if (props.rarity === 'Legendary') rarityId = 2.0;
-    shaderUniforms.uRarity.value = rarityId;
-    shaderUniforms.uFoilStyle.value = getFoilStyleId(props.foilStyle, props.rarity);
-    const isBleed = props.foilStyle === 'Full Art ex' || props.foilStyle === 'Secret Gold' || props.foilStyle === 'Special Illustration';
-    shaderUniforms.uIsBleed.value = isBleed ? 1.0 : 0.0;
-  }
-
-  // Regenerate back texture dynamically to reflect rarity changes on the card back
-  const newBackTexture = createCardBackTexture(props.rarity);
-  if (Array.isArray(cardFrontMesh.material)) {
-    cardFrontMesh.material[5].map = newBackTexture;
-    cardFrontMesh.material[5].needsUpdate = true;
-  }
-  backTexture?.dispose();
-  backTexture = newBackTexture;
-
-  const loader = new THREE.TextureLoader();
-  const placeholderUrl = `/placeholders/${props.rarity.toLowerCase()}-placeholder.svg`;
-  const texUrl = props.imageUrl || placeholderUrl;
-
-  loader.load(
-    texUrl,
-    (tex) => {
-      const canvas = drawCardCanvas({
-        name: props.name,
-        description: props.description,
-        rarity: props.rarity,
-        hypeScore: props.hypeScore,
-        likesPerSec: props.likesPerSec,
-        element: props.element,
-        foilStyle: props.foilStyle,
-        imgZoom: props.imgZoom,
-        imgOffsetX: props.imgOffsetX,
-        imgOffsetY: props.imgOffsetY
-      }, tex.image);
-
-      const canvasTex = new THREE.CanvasTexture(canvas);
-      canvasTex.colorSpace = THREE.SRGBColorSpace;
-
-      if (customShaderMaterial) {
-        shaderUniforms.baseTexture.value = canvasTex;
-      } else {
-        if (Array.isArray(cardFrontMesh.material)) {
-          cardFrontMesh.material[4].map = canvasTex;
-          cardFrontMesh.material[4].needsUpdate = true;
-        } else {
-          cardFrontMesh.material.map = canvasTex;
-          cardFrontMesh.material.needsUpdate = true;
-        }
-      }
-      frontTexture?.dispose();
-      frontTexture = canvasTex;
-    },
-    undefined,
-    () => {
-      const canvas = drawCardCanvas({
-        name: props.name,
-        description: props.description,
-        rarity: props.rarity,
-        hypeScore: props.hypeScore,
-        likesPerSec: props.likesPerSec,
-        element: props.element,
-        foilStyle: props.foilStyle,
-        imgZoom: props.imgZoom,
-        imgOffsetX: props.imgOffsetX,
-        imgOffsetY: props.imgOffsetY
-      }, null);
-
-      const canvasTex = new THREE.CanvasTexture(canvas);
-      canvasTex.colorSpace = THREE.SRGBColorSpace;
-
-      if (customShaderMaterial) {
-        shaderUniforms.baseTexture.value = canvasTex;
-      } else {
-        if (Array.isArray(cardFrontMesh.material)) {
-          cardFrontMesh.material[4].map = canvasTex;
-          cardFrontMesh.material[4].needsUpdate = true;
-        } else {
-          cardFrontMesh.material.map = canvasTex;
-          cardFrontMesh.material.needsUpdate = true;
-        }
-      }
-      frontTexture?.dispose();
-      frontTexture = canvasTex;
-    }
-  );
-}
-
-// Watch all card state metadata props to trigger texture updates
+// Watch semua props kartu → rebuild in-place (texture, material, particle,
+// lampu) tanpa membuat WebGL context baru. Ini yang membuat reveal gacha bisa
+// pakai SATU instance Card3D untuk semua kartu.
 watch([
   () => props.imageUrl,
   () => props.name,
@@ -1492,19 +1720,7 @@ watch([
   () => props.imgOffsetX,
   () => props.imgOffsetY
 ], () => {
-  updateTexture();
-
-  // Re-sync particles if foilStyle changes
-  if (particlesMesh && cardGroup) {
-    cardGroup.remove(particlesMesh);
-    if (particlesMesh.geometry) particlesMesh.geometry.dispose();
-    if (particlesMesh.material) {
-      if (particlesMesh.material.map) particlesMesh.material.map.dispose();
-      particlesMesh.material.dispose();
-    }
-    particlesMesh = null;
-  }
-  initParticles();
+  loadAndBuildCard();
 });
 
 function onResize() {
@@ -1515,26 +1731,27 @@ function onResize() {
   camera.aspect = w / h;
   camera.updateProjectionMatrix();
   renderer.setSize(w, h);
+  composer?.setSize(w, h);
 }
 
 function cleanup() {
-  cancelAnimationFrame(animationId);
-  animationId = null;
-  if (particlesMesh && cardGroup) {
-    cardGroup.remove(particlesMesh);
-    if (particlesMesh.geometry) particlesMesh.geometry.dispose();
-    if (particlesMesh.material) {
-      if (particlesMesh.material.map) particlesMesh.material.map.dispose();
-      particlesMesh.material.dispose();
-    }
-    particlesMesh = null;
-  }
+  stopLoop();
+  disposeRevealResources();
+  disposeParticles();
+  disposeCardMesh();
   if (cardGroup && scene) scene.remove(cardGroup);
-  [frontTexture, backTexture].forEach(t => t?.dispose());
+  [frontTexture, backTexture, envTexture].forEach(t => t?.dispose());
+  frontTexture = backTexture = envTexture = null;
+  cardGeo?.dispose();
+  cardGeo = null;
   if (customShaderMaterial) customShaderMaterial.dispose();
   if (renderer) { renderer.dispose(); renderer.forceContextLoss(); }
   scene = camera = renderer = cardGroup = cardFrontMesh = cardBackMesh = null;
   customShaderMaterial = null;
+}
+
+function onVisibilityChange() {
+  syncLoopState();
 }
 
 onMounted(() => {
@@ -1543,13 +1760,33 @@ onMounted(() => {
     if (containerRef.value) {
       // Only wheel needs addEventListener (touch is handled by template directives)
       containerRef.value.addEventListener('wheel', onWheel, { passive: false });
+
+      // Pause render loop saat kartu keluar viewport (mis. di-scroll lewat)
+      intersectionObserver = new IntersectionObserver((entries) => {
+        isInViewport = entries[0]?.isIntersecting ?? true;
+        syncLoopState();
+      });
+      intersectionObserver.observe(containerRef.value);
     }
   });
   window.addEventListener('resize', onResize);
+  document.addEventListener('visibilitychange', onVisibilityChange);
+
+  // Gyro tanpa permission gate (Android/desktop) langsung aktif;
+  // iOS menunggu sentuhan pertama (requestGyroFromGesture)
+  if (props.mode !== 'mini'
+    && typeof window.DeviceOrientationEvent !== 'undefined'
+    && typeof DeviceOrientationEvent.requestPermission !== 'function') {
+    attachGyro();
+  }
 });
 
 onBeforeUnmount(() => {
   window.removeEventListener('resize', onResize);
+  document.removeEventListener('visibilitychange', onVisibilityChange);
+  if (gyroAttached) window.removeEventListener('deviceorientation', onDeviceOrientation);
+  intersectionObserver?.disconnect();
+  intersectionObserver = null;
   if (containerRef.value) {
     containerRef.value.removeEventListener('wheel', onWheel);
   }

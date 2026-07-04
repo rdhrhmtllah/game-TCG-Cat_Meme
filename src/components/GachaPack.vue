@@ -78,6 +78,10 @@
 
 <script setup>
 import { ref, watch, onMounted, onBeforeUnmount, nextTick } from 'vue';
+import { getQualityConfig } from '@/utils/quality.js';
+import { createEnvironmentTexture } from '@/utils/threeEnv.js';
+
+const quality = getQualityConfig();
 import * as THREE from 'three';
 
 const props = defineProps({
@@ -94,7 +98,10 @@ const tearProgressPercent = ref(0);
 
 let scene, camera, renderer, packGroup;
 let packTopHalf, packBottomHalf, packWhole;
+let envTexture = null;
 let animationId = null;
+let isInViewport = true;
+let intersectionObserver = null;
 let isDragging = false;
 let isTearDragging = false;
 let prevMouse = { x: 0, y: 0 };
@@ -733,13 +740,19 @@ function initScene() {
 
   renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
   renderer.setSize(w, h);
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, quality.dpr));
   renderer.setClearColor(0x000000, 0);
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   containerRef.value.appendChild(renderer.domElement);
 
   // Ensure canvas receives touch events properly on mobile
   renderer.domElement.style.touchAction = 'none';
+
+  // Environment map — foil metalik pack memantulkan "ruangan" (per-renderer,
+  // render target PMREM terikat context ini)
+  envTexture = createEnvironmentTexture(renderer);
+  scene.environment = envTexture;
+  scene.environmentIntensity = 0.75;
 
   // ── Dramatic lighting for foil pack ────────────────────
   scene.add(new THREE.AmbientLight(0xffffff, 0.50));
@@ -846,7 +859,7 @@ function initScene() {
   packBottomHalf.visible = false;
   packGroup.add(packBottomHalf);
 
-  animate();
+  startLoop();
 }
 
 function animate() {
@@ -1041,10 +1054,25 @@ function onResize() {
 }
 
 function cleanup() {
-  cancelAnimationFrame(animationId);
-  animationId = null;
+  stopLoop();
+  envTexture?.dispose();
+  envTexture = null;
   if (renderer) { renderer.dispose(); renderer.forceContextLoss(); }
   scene = camera = renderer = packGroup = packWhole = packTopHalf = packBottomHalf = null;
+}
+
+function startLoop() {
+  if (animationId === null && renderer) animationId = requestAnimationFrame(animate);
+}
+
+function stopLoop() {
+  if (animationId !== null) { cancelAnimationFrame(animationId); animationId = null; }
+}
+
+// Loop hanya jalan saat pack terlihat & tab aktif
+function syncLoopState() {
+  if (isInViewport && !document.hidden) startLoop();
+  else stopLoop();
 }
 
 watch(() => props.tearing, (val) => {
@@ -1061,8 +1089,31 @@ watch(() => props.tearMode, (val) => {
   }
 });
 
-onMounted(() => { nextTick(initScene); window.addEventListener('resize', onResize); });
-onBeforeUnmount(() => { window.removeEventListener('resize', onResize); cleanup(); });
+function onVisibilityChange() {
+  syncLoopState();
+}
+
+onMounted(() => {
+  nextTick(() => {
+    initScene();
+    if (containerRef.value) {
+      intersectionObserver = new IntersectionObserver((entries) => {
+        isInViewport = entries[0]?.isIntersecting ?? true;
+        syncLoopState();
+      });
+      intersectionObserver.observe(containerRef.value);
+    }
+  });
+  window.addEventListener('resize', onResize);
+  document.addEventListener('visibilitychange', onVisibilityChange);
+});
+onBeforeUnmount(() => {
+  window.removeEventListener('resize', onResize);
+  document.removeEventListener('visibilitychange', onVisibilityChange);
+  intersectionObserver?.disconnect();
+  intersectionObserver = null;
+  cleanup();
+});
 
 defineExpose({
   tearProgressPercent,

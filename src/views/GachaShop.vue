@@ -104,9 +104,10 @@
                 :style="{ background: `radial-gradient(ellipse, ${currentCardGlow} 0%, transparent 70%)` }"></div>
             </div>
 
-            <!-- Card with entrance animation -->
-            <div :key="'reveal-card-' + currentRevealIndex" class="w-full h-full"
-              :class="currentCardEntrance">
+            <!-- SATU instance Card3D untuk semua kartu — ganti kartu = rebuild
+                 texture/material in-place, bukan remount WebGL context.
+                 Sekuens sinematik (flip + flash + bloom) dipicu oleh reveal-mode. -->
+            <div class="w-full h-full">
               <div class="rounded-2xl !overflow-visible h-full"
                 :class="'card-frame card-frame-' + currentCard?.rarity?.toLowerCase()">
                 <Card3D
@@ -122,6 +123,7 @@
                   :img-offset-x="currentCard?.imgOffsetX"
                   :img-offset-y="currentCard?.imgOffsetY"
                   mode="full"
+                  reveal-mode
                   class="w-full h-full"
                 />
               </div>
@@ -365,16 +367,6 @@ const currentCard = computed(() => revealedCards.value[currentRevealIndex.value]
 const currentCardGlow = computed(() => {
   const r = currentCard.value?.rarity;
   return rarityGlowColors[r] || 'rgba(124, 58, 237, 0.15)';
-});
-
-const currentCardEntrance = computed(() => {
-  const r = currentCard.value?.rarity;
-  return {
-    Common: 'animate-slide-up',
-    Rare: 'animate-card-materialize',
-    Epic: 'animate-dramatic-zoom',
-    Legendary: 'animate-dramatic-zoom',
-  }[r] || 'animate-slide-up';
 });
 
 const transitionBg = computed(() => {
