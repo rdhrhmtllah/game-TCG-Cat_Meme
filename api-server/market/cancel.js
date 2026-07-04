@@ -27,7 +27,7 @@ export default requireAuth(async function handler(req, res) {
       const [listing] = await tx.select()
         .from(marketplaceListings)
         .where(eq(marketplaceListings.id, listingId))
-        .for('update');
+        ;
 
       if (!listing) {
         throw { status: 404, code: 'NOT_FOUND', message: 'Listing tidak ditemukan.' };

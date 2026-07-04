@@ -5,6 +5,7 @@ import { loginSchema } from '../_lib/schemas.js';
 import { signToken } from '../_lib/jwt.js';
 import { sendError, logError } from '../_lib/errors.js';
 import { checkRateLimit } from '../_lib/rateLimit.js';
+import { logInfo } from '../_lib/logger.js';
 import bcrypt from 'bcryptjs';
 
 /**
@@ -29,6 +30,7 @@ export default async function handler(req, res) {
 
     const { username, password } = parsed.data;
     const normalizedUsername = username.toLowerCase();
+    logInfo('login', `🔐 Login attempt: ${normalizedUsername}`, { ip });
 
     // Rate limit by IP
     if (!checkRateLimit(`login:ip:${ip}`, 5, 60_000)) {
@@ -41,25 +43,30 @@ export default async function handler(req, res) {
     }
 
     // Cari user
+    logInfo('login', `🔍 Querying DB for: ${normalizedUsername}`);
     const [foundUser] = await db.select()
       .from(users)
       .where(eq(users.username, normalizedUsername))
       .limit(1);
 
     if (!foundUser) {
-      // Pesan SAMA untuk user tidak ada ATAU password salah (anti-enumeration)
+      logInfo('login', `❌ User not found: ${normalizedUsername}`);
       return sendError(res, 401, 'INVALID_CREDENTIALS', 'Username atau password salah.');
     }
 
     // Compare password
+    logInfo('login', `🔑 Comparing password for: ${normalizedUsername}`);
     const isValid = await bcrypt.compare(password, foundUser.passwordHash);
     if (!isValid) {
+      logInfo('login', `❌ Invalid password for: ${normalizedUsername}`);
       return sendError(res, 401, 'INVALID_CREDENTIALS', 'Username atau password salah.');
     }
 
     // Sign JWT
+    logInfo('login', `✍️ Signing JWT for: ${normalizedUsername} (userId=${foundUser.id})`);
     const token = signToken({ userId: foundUser.id, username: foundUser.username });
 
+    logInfo('login', `✅ Login success: ${normalizedUsername}`);
     return res.status(200).json({
       message: 'Login berhasil! Selamat datang kembali!',
       user: {

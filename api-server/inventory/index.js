@@ -30,6 +30,11 @@ export default requireAuth(async function handler(req, res) {
         likesPerSec: masterCards.likesPerSec,
         imageUrl: masterCards.imageUrl,
         isPlaceholderImage: masterCards.isPlaceholderImage,
+        element: masterCards.element,
+        foilStyle: masterCards.foilStyle,
+        imgZoom: masterCards.imgZoom,
+        imgOffsetX: masterCards.imgOffsetX,
+        imgOffsetY: masterCards.imgOffsetY,
       },
     })
       .from(userInventory)

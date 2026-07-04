@@ -573,6 +573,83 @@ Lihat Bagian 11.3 untuk detail lengkap.
 
 ---
 
+## 9A. UI/UX Design System — Pokémon TCG Premium Standard (Amendment v4)
+
+> **Ditambahkan setelah visual pivot ke estetika Pokémon TCG Pocket/Live.**
+> Semua komponen UI yang dibangun/di-refactor HARUS mengikuti standar ini.
+
+### 9A.1 Palet Warna
+
+| Token | Hex | Fungsi |
+|---|---|---|
+| `surface-base` | `#070B1A` | Background utama (paling gelap) |
+| `surface-card` | `#0C1428` | Panel/card background |
+| `surface-elevated` | `#121E3D` | Navbar, elevated elements |
+| `surface-overlay` | `rgba(7, 11, 26, 0.92)` | Modal overlay |
+| `accent` | `#7C3AED` | Primary accent |
+| `accent-glow` | `#8B5CF6` | Glow variant |
+| `text-primary` | `#F1F5F9` | Heading text |
+| `text-secondary` | `#94A3B8` | Body text |
+| `text-muted` | `#475569` | Disabled/hint text |
+
+**Rarity Colors (harus saturated & vibrant):**
+
+| Rarity | Primary | Light | Glow |
+|---|---|---|---|
+| Common | `#94A3B8` | `#CBD5E1` | `rgba(148, 163, 184, 0.3)` |
+| Rare | `#38BDF8` | `#7DD3FC` | `rgba(56, 189, 248, 0.4)` |
+| Epic | `#A855F7` | `#C084FC` | `rgba(168, 85, 247, 0.5)` |
+| Legendary | `#F59E0B` | `#FCD34D` | `rgba(245, 158, 11, 0.6)` |
+
+### 9A.2 Tipografi
+
+- **Display / Headings**: `Outfit` (Google Fonts), weight 600–800. Untuk judul, harga, nama kartu.
+- **Body / UI**: `Inter` (Google Fonts), weight 400–600. Untuk body text, label, caption.
+- Loaded via `<link>` di `index.html`.
+
+### 9A.3 Glassmorphism Specification
+
+| Elemen | `backdrop-filter` | `background` | `border` |
+|---|---|---|---|
+| Nav bar | `blur(16px)` | `rgba(12, 20, 40, 0.85)` | `1px solid rgba(255,255,255,0.06)` |
+| Card panel | `blur(12px)` | `rgba(12, 20, 40, 0.7)` | `1px solid rgba(255,255,255,0.05)` |
+| Modal | `blur(20px)` | `rgba(7, 11, 26, 0.9)` | `1px solid rgba(255,255,255,0.08)` |
+| Toast | `blur(16px)` | rarity-specific alpha | `1px solid rarity-color/30` |
+
+Semua glass panel WAJIB memiliki pseudo-element `::before` untuk inner light reflection line (gradient putih tipis di border atas, opacity 0.05–0.1).
+
+### 9A.4 Card Visual Fidelity per Rarity
+
+| Rarity | Shader | Tilt | Glow | Particles | Border |
+|---|---|---|---|---|---|
+| Common | `MeshStandardMaterial` (no shader) | ✅ basic | Subtle outer | ❌ | Silver solid |
+| Rare | `MeshStandardMaterial` + shimmer | ✅ enhanced | Blue outer | ❌ | Blue gradient |
+| Epic | `ShaderMaterial` holographic v2 | ✅ full 3D | Purple inner+outer | ✅ sparkles | Animated purple gradient |
+| Legendary | `ShaderMaterial` holographic v2 + energy | ✅ full 3D + spring | Gold multi-layer | ✅ sparkles + wisps | Animated gold `conic-gradient` |
+
+### 9A.5 Animasi System
+
+| Animasi | Durasi | Easing | Konteks |
+|---|---|---|---|
+| Page transition | 300ms | `ease-out` | Route change |
+| Card hover tilt | 200ms | spring (`0.08 damping`) | Pointer move |
+| Button hover glow | 150ms | `ease` | Button hover |
+| Card reveal (Common/Rare) | 1.5s | `cubic-bezier(0.34, 1.56, 0.64, 1)` | Gacha reveal |
+| Card reveal (Epic) | 2.5s | custom staged | Gacha reveal + light rays |
+| Card reveal (Legendary) | 3.5s | custom staged + shake | Gacha reveal + explosion + confetti |
+| Holographic sweep | 3s | `linear infinite` | Card idle |
+| Glow breathe | 2.5s | `ease-in-out infinite` | Legendary ambient |
+
+### 9A.6 STRICT FORBIDDEN
+
+- ❌ Low-poly / flat design / UI generik kaku
+- ❌ Warna polos tanpa gradient (tombol, panel, badge)
+- ❌ Kartu tanpa interaksi tilt/parallax
+- ❌ Gacha reveal tanpa animasi dramatis
+- ❌ Text tanpa hierarki visual (semua ukuran/berat sama)
+
+---
+
 ## 10. Spesifikasi Render 3D & Shader (`Card3D.vue`)
 
 ### 10.1 Geometri & Material

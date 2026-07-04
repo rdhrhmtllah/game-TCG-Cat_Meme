@@ -1,7 +1,7 @@
 <template>
-  <div class="min-h-screen flex flex-col bg-surface">
+  <div class="min-h-screen flex flex-col" style="background: #070B1A;">
     <NavBar v-if="showNav" />
-    <main class="flex-1 pb-20 md:pb-0 md:pt-14">
+    <main class="flex-1" :class="showNav ? 'pb-24 md:pb-0 md:pt-14' : ''">
       <router-view v-slot="{ Component, route }">
         <Transition name="page" mode="out-in">
           <component :is="Component" :key="route.path" />
@@ -21,7 +21,7 @@ import ToastContainer from '@/components/ToastContainer.vue';
 const route = useRoute();
 
 const showNav = computed(() => {
-  const hiddenRoutes = ['/login', '/register', '/admin'];
-  return !hiddenRoutes.includes(route.path);
+  const hiddenRoutes = ['/login', '/register'];
+  return !hiddenRoutes.includes(route.path) && !route.path.startsWith('/admin');
 });
 </script>

@@ -22,6 +22,10 @@ export default requireAuth(async function handler(req, res) {
       avatarUrl: users.avatarUrl,
       createdAt: users.createdAt,
       lastClaimedAt: users.lastClaimedAt,
+      loginStreak: users.loginStreak,
+      lastLoginDate: users.lastLoginDate,
+      lastSpinDate: users.lastSpinDate,
+      referralCode: users.referralCode,
     })
       .from(users)
       .where(eq(users.id, req.userId))

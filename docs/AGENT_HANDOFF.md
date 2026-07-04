@@ -8,7 +8,19 @@
 
 **Semua fase SELESAI** (Fase 0–13). Project siap production deployment.
 
-**Update terakhir**: 2026-06-14 — Claude session 1 complete.
+**Visual Overhaul SELESAI** — Pokémon TCG Premium Style diterapkan ke seluruh UI/UX.
+
+**Update terakhir**: 2026-06-15 — Antigravity session: Gacha polish, activities integration, and database schema migration complete.
+
+### Polish & Activities Integration — Files Modified
+- `src/components/IconBase.vue` — Added gamepad icon SVG for Activities.
+- `src/components/NavBar.vue` — Changed Activities menu item to use the custom gamepad icon.
+- `src/components/GachaPack.vue` — Separated drag completion from animation completion events; exposed tear progress.
+- `src/views/GachaShop.vue` — Implemented persistent GachaPack instance, drag/animation synchronization, and auto-tear button.
+- `src/views/Dashboard.vue` — Replaced redundant Showcase quick action card with Activities card.
+- `api/db/schema.js` — Configured user tables with coin mechanics fields.
+- `api/me.js` — Returned user fields to frontend.
+- `api/daily-login.js` — Added mission tracking support.
 
 ---
 
@@ -56,15 +68,27 @@ vercel --prod
 ```
 
 ### 2. Set Environment Variables di Vercel Dashboard
-Buka dashboard project di vercel.com → Settings → Environment Variables:
+Buka dashboard project di vercel.com → Settings → Environment Variables.
+Nilai asli HANYA boleh ada di `.env` lokal (di-gitignore) dan Vercel env vars — JANGAN PERNAH tulis nilai asli di file yang di-commit:
 ```
-JWT_SECRET=ed502d01f6c4321b581d1621c9da6e5db24ca402e0db62daf93e0069139b8906
-ADMIN_SECRET=8ebc8c13f2d850b80b3e400ebf33b2548936722d2e9a0a6d
-CRON_SECRET=a344519946cb8f287c788eed5aef75a915d4d2b2311c571b
-DATABASE_URL=postgresql://neondb_owner:npg_NQ98OsWkVBYq@ep-purple-bar-aorkm3e6-pooler.c-2.ap-southeast-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require
-GEMINI_API_KEY=gen-lang-client-0926529858
+JWT_SECRET=<set-in-vercel-env>
+ADMIN_SECRET=<set-in-vercel-env>
+CRON_SECRET=<set-in-vercel-env>
+DATABASE_URL=<set-in-vercel-env>
+GEMINI_API_KEY=<set-in-vercel-env>
 NODE_ENV=production
 ```
+
+### ⚠️ 2b. WAJIB: Rotasi Kredensial (secrets pernah ter-commit di file ini)
+
+Versi lama file ini berisi nilai secret asli dan sudah masuk git history — anggap SEMUA kredensial di bawah bocor dan rotasi segera:
+
+- [ ] **Neon DATABASE_URL** — dashboard [console.neon.tech](https://console.neon.tech) → project → Roles → reset password `neondb_owner` → update `DATABASE_URL` di `.env` lokal + Vercel env.
+- [ ] **JWT_SECRET** — generate baru: `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"` → update `.env` + Vercel. (Konsekuensi: semua sesi login user invalid, user harus login ulang.)
+- [ ] **ADMIN_SECRET** — generate baru dengan cara yang sama → update `.env` + Vercel.
+- [ ] **CRON_SECRET** — generate baru → update `.env` + Vercel (cron Vercel memakai header dari env, tidak perlu ubah kode).
+- [ ] **GEMINI_API_KEY** — [aistudio.google.com/apikey](https://aistudio.google.com/apikey) → hapus key lama → buat key baru → update `.env` + Vercel.
+- [ ] Redeploy Vercel setelah semua env var diganti.
 
 ### 3. Setup Vercel Blob (untuk upload gambar admin)
 1. Dashboard Vercel → tab "Storage" → "Create Database" → "Blob"

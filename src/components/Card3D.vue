@@ -1,12 +1,17 @@
-﻿<template>
+<template>
   <div
     ref="containerRef"
-    class="w-full h-full relative"
+    class="w-full h-full relative origin-center"
+    :style="{
+      transform: `scale(${renderedScale})`,
+      touchAction: 'none'
+    }"
     :class="{ 'cursor-pointer': !props.animating }"
     @mousemove="onPointerMove"
     @mouseleave="onPointerLeave"
-    @touchmove.prevent="onTouchMove"
-    @touchend="onPointerLeave"
+    @touchstart.prevent="onTouchStartTilt"
+    @touchmove.prevent="onTouchMoveTilt"
+    @touchend.prevent="onTouchEndTilt"
     @click="onClick"
   >
     <!-- Loading shimmer overlay -->
@@ -14,79 +19,364 @@
       v-if="textureLoading"
       class="absolute inset-0 z-10 flex items-center justify-center rounded-xl overflow-hidden"
     >
-      <div class="w-full h-full animate-shimmer bg-gradient-to-r from-gray-800 via-gray-700 to-gray-800 bg-[length:200%_100%]" />
-      <span class="absolute text-muted text-xs">Loading...</span>
+      <div class="w-full h-full bg-gradient-to-r from-surface-card via-surface-elevated to-surface-card bg-[length:200%_100%] animate-shimmer" />
+      <span class="absolute text-muted text-xs font-display">Loading...</span>
+    </div>
+
+    <!-- CSS Gloss overlay (follows cursor) -->
+    <div
+      v-if="!textureLoading && props.mode !== 'mini'"
+      class="absolute inset-0 z-20 pointer-events-none rounded-xl overflow-hidden"
+      :style="glossStyle"
+    />
+
+    <!-- Rarity particle ring (Legendary only, CSS-based) -->
+    <div v-if="props.rarity === 'Legendary' && !textureLoading"
+      class="absolute inset-0 z-0 pointer-events-none">
+      <span v-for="i in 8" :key="'p'+i"
+        class="absolute w-1 h-1 rounded-full bg-legendary/60 animate-particle-float"
+        :style="{
+          left: (15 + Math.sin(i * 0.785) * 35 + 50) + '%',
+          top: (15 + Math.cos(i * 0.785) * 40 + 50) + '%',
+          animationDelay: (i * 0.5) + 's',
+          animationDuration: (3 + i * 0.3) + 's',
+        }"
+      />
+    </div>
+    <!-- Epic sparkle particles -->
+    <div v-if="props.rarity === 'Epic' && !textureLoading"
+      class="absolute inset-0 z-0 pointer-events-none">
+      <span v-for="i in 5" :key="'ep'+i"
+        class="absolute w-0.5 h-0.5 rounded-full bg-epic-light/50 animate-sparkle"
+        :style="{
+          left: (20 + Math.random() * 60) + '%',
+          top: (20 + Math.random() * 60) + '%',
+          animationDelay: (i * 0.3) + 's',
+        }"
+      />
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, watch, onMounted, onBeforeUnmount, nextTick } from 'vue';
+import { ref, watch, computed, onMounted, onBeforeUnmount, nextTick } from 'vue';
 import * as THREE from 'three';
+import { drawCardCanvas } from '@/utils/cardRenderer.js';
 
 const props = defineProps({
   imageUrl: { type: String, default: '' },
   rarity: { type: String, default: 'Common' },
-  mode: { type: String, default: 'full' },
+  name: { type: String, default: '' },
+  description: { type: String, default: '' },
+  hypeScore: { type: Number, default: 0 },
+  likesPerSec: { type: Number, default: 0 },
+  element: { type: String, default: 'Normal' },
+  mode: { type: String, default: 'full' }, // 'full' | 'mini'
   flipped: { type: Boolean, default: false },
   animating: { type: Boolean, default: false },
+  allowZoom: { type: Boolean, default: false },
+  focused: { type: Boolean, default: false },
+  foilStyle: { type: String, default: 'Standard' },
+  // Image position / crop
+  imgZoom: { type: Number, default: 1.0 },
+  imgOffsetX: { type: Number, default: 0.0 },
+  imgOffsetY: { type: Number, default: 0.0 },
 });
 
-const emit = defineEmits(['flip-start', 'flip-complete', 'click']);
+const emit = defineEmits(['flip-start', 'flip-complete', 'click', 'zoom-change']);
 
 const containerRef = ref(null);
 const textureLoading = ref(true);
 
-// Three.js
+// Gloss tracking
+const glossX = ref(50);
+const glossY = ref(50);
+
+const glossStyle = computed(() => ({
+  background: `radial-gradient(circle 180px at ${glossX.value}% ${glossY.value}%, rgba(255,255,255,0.08) 0%, transparent 60%)`,
+  transition: 'background 0.15s ease',
+}));
+
+// Three.js refs
 let scene, camera, renderer;
-let cardGroup, cardFrontMesh, cardBackMesh, cardBorder;
+let cardGroup, cardFrontMesh, cardBackMesh;
 let frontTexture, backTexture, customShaderMaterial;
 let animationId = null;
 let isFlipped = false;
-let flipProgress = 0;
 let flipStartTime = 0;
 let flipDuration = 600;
 let isFlipping = false;
+let particlesMesh = null;
 
-// Tilt
+const getFoilStyleId = (style, rarity) => {
+  const s = style || 'Standard';
+  if (s === 'Standard') {
+    if (rarity === 'Rare') return 1.0;
+    if (rarity === 'Epic') return 3.0;
+    if (rarity === 'Legendary') return 4.0;
+    return 0.0;
+  }
+  switch (s) {
+    case 'Holo': return 1.0;
+    case 'Reverse Holo': return 2.0;
+    case 'Full Art ex': return 3.0;
+    case 'Secret Gold': return 4.0;
+    case 'Special Illustration': return 5.0;
+    default: return 0.0;
+  }
+};
+
+const getFoilIntensity = (style, rarity) => {
+  switch (style) {
+    case 'Standard':
+      if (rarity === 'Rare') return 0.35;
+      if (rarity === 'Epic') return 0.75;
+      if (rarity === 'Legendary') return 1.0;
+      return 0.0;
+    case 'Holo':
+    case 'Reverse Holo':
+      return 0.6;
+    case 'Full Art ex':
+      return 0.85;
+    case 'Secret Gold':
+    case 'Special Illustration':
+      return 1.0;
+    default:
+      return 0.0;
+  }
+};
+
+const resolveConfig = () => {
+  const rarity = props.rarity;
+  const style = props.foilStyle || 'Standard';
+  const base = rarityConfig[rarity] || rarityConfig.Common;
+  
+  let foilIntensity = getFoilIntensity(style, rarity);
+  let borderColor = base.borderColor;
+  let emissive = base.emissive;
+  let emissiveIntensity = base.emissiveIntensity;
+  let metalness = base.metalness;
+  let roughness = base.roughness;
+  
+  if (style === 'Secret Gold') {
+    borderColor = '#F59E0B';
+    emissive = '#78350F';
+    emissiveIntensity = 0.55;
+    metalness = 0.8;
+    roughness = 0.2;
+  } else if (style === 'Full Art ex' || style === 'Special Illustration') {
+    metalness = 0.7;
+    roughness = 0.35;
+  }
+  
+  return {
+    foilIntensity,
+    borderColor,
+    borderWidth: base.borderWidth,
+    emissive,
+    emissiveIntensity,
+    metalness,
+    roughness
+  };
+};
+
+function initParticles() {
+  if (!cardGroup) return;
+
+  const rarity = props.rarity;
+  const cfg = rarityConfig[rarity] || rarityConfig.Common;
+  const isSpecialIllustration = props.foilStyle === 'Special Illustration';
+
+  // Determine particle count: Special Illustration always spawns particles, other rarities based on config
+  let particleCount = 0;
+  if (isSpecialIllustration) {
+    particleCount = cfg.particleCount > 0 ? cfg.particleCount : 20;
+  } else if (rarity === 'Rare' || rarity === 'Epic' || rarity === 'Legendary') {
+    particleCount = cfg.particleCount;
+  }
+  if (particleCount === 0) return;
+
+  const geometry = new THREE.BufferGeometry();
+  const positions = new Float32Array(particleCount * 3);
+  const sizes = new Float32Array(particleCount);
+  const speeds = [];
+
+  // Parse rarity color
+  const hexColor = cfg.particleColor || '#FCD34D';
+  const r = parseInt(hexColor.slice(1, 3), 16) / 255;
+  const g = parseInt(hexColor.slice(3, 5), 16) / 255;
+  const b = parseInt(hexColor.slice(5, 7), 16) / 255;
+
+  for (let i = 0; i < particleCount; i++) {
+    let x, y, z;
+
+    if (rarity === 'Legendary' || isSpecialIllustration) {
+      // Full card spread with two orbit rings
+      const ring = i < particleCount * 0.55 ? 'inner' : 'outer';
+      const angle = (i / particleCount) * Math.PI * 2 + Math.random() * 0.8;
+      const radius = ring === 'inner' ? 1.2 + Math.random() * 0.5 : 1.9 + Math.random() * 0.7;
+      x = Math.cos(angle) * radius;
+      y = Math.sin(angle) * radius * 1.35;
+      z = 0.06 + Math.random() * 0.30;
+      speeds.push({
+        orbit: ring === 'inner' ? 0.008 : 0.004,
+        angle,
+        radius,
+        radiusY: radius * 1.35,
+        twinkle: 2 + Math.random() * 4,
+        type: 'orbit',
+        ring
+      });
+    } else if (rarity === 'Epic') {
+      // Orbital cosmic dust
+      const angle = (i / particleCount) * Math.PI * 2 + Math.random() * 1.2;
+      const radius = 1.3 + Math.random() * 1.0;
+      x = Math.cos(angle) * radius;
+      y = Math.sin(angle) * radius * 1.4;
+      z = 0.06 + Math.random() * 0.25;
+      speeds.push({
+        orbit: 0.005 + Math.random() * 0.005,
+        angle,
+        radius,
+        radiusY: radius * 1.4,
+        twinkle: 3 + Math.random() * 5,
+        type: 'orbit',
+        ring: 'outer'
+      });
+    } else if (rarity === 'Rare') {
+      // Edge sparks that drift upward along card edges
+      const edge = Math.floor(Math.random() * 4);
+      if (edge === 0)      { x = -1.55 + Math.random() * 0.15; y = (Math.random() - 0.5) * 4.2; }
+      else if (edge === 1) { x =  1.40 + Math.random() * 0.15; y = (Math.random() - 0.5) * 4.2; }
+      else if (edge === 2) { x = (Math.random() - 0.5) * 3.0; y = -2.15 + Math.random() * 0.15; }
+      else                 { x = (Math.random() - 0.5) * 3.0; y =  2.00 + Math.random() * 0.15; }
+      z = 0.05 + Math.random() * 0.20;
+      speeds.push({
+        y: 0.08 + Math.random() * 0.15,
+        x: (Math.random() - 0.5) * 0.03,
+        twinkle: 4 + Math.random() * 5,
+        type: 'drift'
+      });
+    }
+
+    positions[i * 3]     = x;
+    positions[i * 3 + 1] = y;
+    positions[i * 3 + 2] = z;
+    sizes[i] = rarity === 'Rare' ? 3.0 + Math.random() * 4.0 : 4.0 + Math.random() * 9.0;
+  }
+
+  geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  geometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+
+  // Procedural particle texture
+  const pCanvas = document.createElement('canvas');
+  pCanvas.width = 32;
+  pCanvas.height = 32;
+  const pCtx = pCanvas.getContext('2d');
+
+  if (rarity === 'Legendary' || isSpecialIllustration) {
+    // 4-point star glow
+    const grad = pCtx.createRadialGradient(16, 16, 0, 16, 16, 16);
+    grad.addColorStop(0, `rgba(${Math.round(r*255)}, ${Math.round(g*255)}, ${Math.round(b*255)}, 1)`);
+    grad.addColorStop(0.2, `rgba(${Math.round(r*255)}, ${Math.round(g*255)}, ${Math.round(b*255)}, 0.7)`);
+    grad.addColorStop(1, 'rgba(255,255,255,0)');
+    pCtx.fillStyle = grad;
+    pCtx.beginPath();
+    pCtx.arc(16, 16, 16, 0, Math.PI * 2);
+    pCtx.fill();
+    // Star spike horizontal
+    pCtx.fillStyle = `rgba(${Math.round(r*255)}, ${Math.round(g*255)}, ${Math.round(b*255)}, 0.6)`;
+    pCtx.fillRect(0, 14, 32, 4);
+    pCtx.fillRect(14, 0, 4, 32);
+  } else {
+    // Soft round glow
+    const grad = pCtx.createRadialGradient(16, 16, 0, 16, 16, 16);
+    grad.addColorStop(0, `rgba(${Math.round(r*255)}, ${Math.round(g*255)}, ${Math.round(b*255)}, 1)`);
+    grad.addColorStop(0.5, `rgba(${Math.round(r*255)}, ${Math.round(g*255)}, ${Math.round(b*255)}, 0.4)`);
+    grad.addColorStop(1, 'rgba(255,255,255,0)');
+    pCtx.fillStyle = grad;
+    pCtx.beginPath();
+    pCtx.arc(16, 16, 16, 0, Math.PI * 2);
+    pCtx.fill();
+  }
+
+  const pTexture = new THREE.CanvasTexture(pCanvas);
+
+  const particleColor = rarity === 'Legendary' ? 0xFCD34D
+    : rarity === 'Epic' ? 0xD946EF
+    : rarity === 'Rare' ? 0x06B6D4
+    : 0xffffff;
+
+  const material = new THREE.PointsMaterial({
+    color: particleColor,
+    size: rarity === 'Rare' ? 0.10 : rarity === 'Epic' ? 0.13 : 0.16,
+    map: pTexture,
+    transparent: true,
+    opacity: rarity === 'Rare' ? 0.75 : 0.90,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+    sizeAttenuation: true,
+  });
+
+  particlesMesh = new THREE.Points(geometry, material);
+  particlesMesh.userData = { speeds, startTime: performance.now() };
+  cardGroup.add(particlesMesh);
+}
+
+// Spring-based tilt system — tuned for instant 1:1 finger tracking (TCG-style direct manipulation)
 let targetRotX = 0, targetRotY = 0;
 let currentRotX = 0, currentRotY = 0;
+let velocityX = 0, velocityY = 0;
+const springStiffness = 0.55;   // was 0.12 — now ~5× faster, card snaps to finger
+const springDamping = 0.82;     // was 0.75 — higher damping prevents overshoot at high stiffness
+const hoverStiffness = 0.22;    // desktop mouse hover — responsive but smooth
+const hoverDamping = 0.80;
+const releaseStiffness = 0.08;  // gentle return-to-center when finger lifts
+const releaseDamping = 0.88;    // smooth settle after release
 
-// Uniforms for shader
+// Pinch and Zoom variables
+const cardScale = ref(1.0);
+const renderedScale = ref(1.0);
+let initialPinchDist = 0;
+let initialScale = 1.0;
+let isPinching = false;
+
+// Shader uniforms
 const shaderUniforms = {
   baseTexture: { value: null },
   uTime: { value: 0 },
   uFoilIntensity: { value: 0 },
-  uBorderColor: { value: new THREE.Color('#A78BFA') },
+  uBorderColor: { value: new THREE.Color('#A855F7') },
   uBorderWidth: { value: 0.06 },
+  uMouseX: { value: 0.5 },
+  uMouseY: { value: 0.5 },
+  uRarity: { value: 0.0 }, // 0 = Rare, 1 = Epic, 2 = Legendary
+  uFoilStyle: { value: 0.0 }, // 0 = Standard, 1 = Holo, 2 = Reverse Holo, 3 = Full Art ex, 4 = Secret Gold, 5 = Special Illustration
+  uIsBleed: { value: 0.0 }, // 0.0 = framed/windowed, 1.0 = full bleed background
 };
 
 const rarityConfig = {
-  Common:    { foilIntensity: 0.0,  borderColor: '#9CA3AF', borderWidth: 0.04, emissive: '#000000', emissiveIntensity: 0,   metalness: 0.1, roughness: 0.8 },
-  Rare:      { foilIntensity: 0.2,  borderColor: '#60A5FA', borderWidth: 0.05, emissive: '#1E3A5F', emissiveIntensity: 0.2, metalness: 0.3, roughness: 0.6 },
-  Epic:      { foilIntensity: 0.6,  borderColor: '#A78BFA', borderWidth: 0.06, emissive: '#3B1F6E', emissiveIntensity: 0.4, metalness: 0.5, roughness: 0.4 },
-  Legendary: { foilIntensity: 1.0,  borderColor: '#FBBF24', borderWidth: 0.07, emissive: '#78350F', emissiveIntensity: 0.6, metalness: 0.7, roughness: 0.3 },
+  Common:    { foilIntensity: 0.0,  borderColor: '#9CA3AF', borderWidth: 0.025, emissive: '#111827', emissiveIntensity: 0.0,  metalness: 0.20, roughness: 0.80, particleColor: null,      particleCount: 0,  ambientIntensity: 0.60 },
+  Rare:      { foilIntensity: 0.40, borderColor: '#06B6D4', borderWidth: 0.038, emissive: '#083344', emissiveIntensity: 0.22, metalness: 0.55, roughness: 0.35, particleColor: '#06B6D4', particleCount: 12, ambientIntensity: 0.50 },
+  Epic:      { foilIntensity: 0.80, borderColor: '#C026D3', borderWidth: 0.050, emissive: '#3B0764', emissiveIntensity: 0.45, metalness: 0.70, roughness: 0.20, particleColor: '#C084FC', particleCount: 25, ambientIntensity: 0.40 },
+  Legendary: { foilIntensity: 1.0,  borderColor: '#F59E0B', borderWidth: 0.065, emissive: '#92400E', emissiveIntensity: 0.65, metalness: 0.90, roughness: 0.08, particleColor: '#FCD34D', particleCount: 45, ambientIntensity: 0.30 },
 };
 
 const config = () => rarityConfig[props.rarity] || rarityConfig.Common;
 
-// Shaders
+// ====== HIGH-END POKÉMON TCG SHADERS ======
 const vertexShader = /* glsl */ `
   varying vec2 vUv;
   varying vec3 vNormal;
   varying vec3 vViewPosition;
-  uniform float uTime;
+  varying vec3 vWorldPosition;
+
   void main() {
     vUv = uv;
-    vec3 pos = position;
-    // Subtle breathing for Legendary
-    if (uTime > 0.0) {
-      pos.z += sin(pos.x * 3.0 + uTime * 0.5) * 0.002;
-      pos.z += sin(pos.y * 3.0 + uTime * 0.7) * 0.002;
-    }
     vNormal = normalize(normalMatrix * normal);
-    vec4 mvPosition = modelViewMatrix * vec4(pos, 1.0);
+    vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
     vViewPosition = -mvPosition.xyz;
+    vWorldPosition = (modelMatrix * vec4(position, 1.0)).xyz;
     gl_Position = projectionMatrix * mvPosition;
   }
 `;
@@ -95,113 +385,515 @@ const fragmentShader = /* glsl */ `
   varying vec2 vUv;
   varying vec3 vNormal;
   varying vec3 vViewPosition;
+  varying vec3 vWorldPosition;
+
   uniform sampler2D baseTexture;
   uniform float uTime;
   uniform float uFoilIntensity;
   uniform vec3 uBorderColor;
   uniform float uBorderWidth;
-  void main() {
-    vec4 baseColor = texture2D(baseTexture, vUv);
-    vec3 viewDir = normalize(vViewPosition);
-    float fresnel = pow(1.0 - max(dot(normalize(vNormal), viewDir), 0.0), 3.0);
+  uniform float uMouseX;
+  uniform float uMouseY;
+  uniform float uRarity;
+  uniform float uFoilStyle;
+  uniform float uIsBleed;
 
-    // Foil sweep
-    float sweep = sin((vUv.x + vUv.y) * 3.14159 + uTime * 0.8) * 0.5 + 0.5;
-    vec3 rainbow = vec3(
-      sin(sweep * 6.28 + 0.0) * 0.5 + 0.5,
-      sin(sweep * 6.28 + 2.1) * 0.5 + 0.5,
-      sin(sweep * 6.28 + 4.2) * 0.5 + 0.5
+  // Hash function for procedural noise
+  float hash(vec2 p) {
+    return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
+  }
+  float hash1(float n) { return fract(sin(n) * 43758.5453); }
+
+  // 4-point star generator
+  float drawStar(vec2 uv, float size, float twinkleSpeed, vec2 cellId) {
+    vec2 p = uv;
+    float dist = length(p);
+    float crossSpikes = smoothstep(0.012 * size, 0.0, abs(p.x) * (abs(p.y) + 0.22)) * 0.75
+                      + smoothstep(0.012 * size, 0.0, abs(p.y) * (abs(p.x) + 0.22)) * 0.75;
+    float core = smoothstep(0.1 * size, 0.0, dist) * 0.35;
+    float twinkle = sin(uTime * twinkleSpeed + hash(cellId) * 6.28) * 0.5 + 0.5;
+    return (crossSpikes + core) * twinkle;
+  }
+
+  float getGalaxyStars(vec2 uv) {
+    vec2 scaledUv = uv * 15.0;
+    vec2 ipos = floor(scaledUv);
+    vec2 fpos = fract(scaledUv) - 0.5;
+    float cellHash = hash(ipos);
+    vec2 offset = vec2(hash(ipos + 1.2), hash(ipos + 4.9)) - 0.5;
+    vec2 starPos = fpos - offset * 0.45;
+    float size = 0.4 + 0.6 * hash(ipos + 7.8);
+    float speed = 2.5 + 3.5 * hash(ipos + 3.1);
+    float activeChance = step(0.75, cellHash);
+    return drawStar(starPos, size, speed, ipos) * activeChance;
+  }
+
+  // Iridescent rainbow (prismatic thin-film)
+  vec3 getIridescence(vec3 normal, vec3 viewDir) {
+    float cosTheta = max(dot(normal, viewDir), 0.0);
+    float wave = cosTheta * 2.5 + uTime * 0.2;
+    vec3 color = vec3(
+      sin(wave * 6.28 + 0.0) * 0.5 + 0.5,
+      sin(wave * 6.28 + 2.1) * 0.5 + 0.5,
+      sin(wave * 6.28 + 4.2) * 0.5 + 0.5
     );
+    return mix(color, vec3(1.0, 0.85, 0.9), 0.2);
+  }
 
-    // Border detection
-    float b = step(vUv.x, uBorderWidth) + step(vUv.y, uBorderWidth)
-            + step(1.0 - vUv.x, uBorderWidth) + step(1.0 - vUv.y, uBorderWidth);
-    b = clamp(b, 0.0, 1.0);
+  // Epic plasma energy pulse (concentric rings from center)
+  float getEpicPlasma(vec2 uv) {
+    vec2 center = vec2(0.5, 0.5);
+    float dist = length(uv - center) * 2.2;
+    float pulse = sin(dist * 8.0 - uTime * 3.5) * 0.5 + 0.5;
+    float ring = smoothstep(0.6, 0.0, dist) * pulse;
+    return ring;
+  }
 
-    vec3 finalColor = mix(baseColor.rgb, uBorderColor, b * 0.75);
-    finalColor = mix(finalColor, rainbow, fresnel * uFoilIntensity * 0.5);
-    finalColor += rainbow * sweep * uFoilIntensity * 0.12;
+  // Legendary subsurface scatter glow from edges
+  float getLegendaryEdgeGlow(vec2 uv, float borderWidth) {
+    float ex = smoothstep(borderWidth * 2.5, 0.0, uv.x) + smoothstep(borderWidth * 2.5, 0.0, 1.0 - uv.x);
+    float ey = smoothstep(borderWidth * 2.5, 0.0, uv.y) + smoothstep(borderWidth * 2.5, 0.0, 1.0 - uv.y);
+    return clamp(ex + ey, 0.0, 1.0);
+  }
 
-    // Sparkle for high foil
-    float sparkle = step(0.998, fract(sin(vUv.x * 120.0 + vUv.y * 60.0 + uTime * 2.0) * 1000.0));
-    finalColor += vec3(1.0, 0.95, 0.8) * sparkle * uFoilIntensity * 0.6;
+  // Diamond caustic light pattern for Legendary
+  float getDiamondCaustic(vec2 uv) {
+    vec2 p = uv * 8.0;
+    float c = 0.0;
+    for (int i = 0; i < 3; i++) {
+      float fi = float(i);
+      vec2 q = p + vec2(sin(uTime * 0.4 + fi * 2.1), cos(uTime * 0.3 + fi * 1.7)) * 0.5;
+      c += abs(sin(q.x + sin(q.y + uTime * 0.2))) * 0.33;
+    }
+    return clamp(c, 0.0, 1.0);
+  }
+
+  // Rare anisotropic highlight (brushed metal directional sheen)
+  float getAnisotropicHighlight(vec3 normal, vec3 viewDir) {
+    vec3 tangent = normalize(cross(normal, vec3(1.0, 0.0, 0.0)));
+    float t = dot(tangent, viewDir);
+    float anisoSpec = pow(max(0.0, 1.0 - abs(t)), 6.0);
+    return anisoSpec;
+  }
+
+  // Film grain (cinematic texture)
+  float getFilmGrain(vec2 uv) {
+    float t = floor(uTime * 24.0); // 24fps grain change rate
+    return hash(uv * 800.0 + t) * 2.0 - 1.0;
+  }
+
+  // Depth of field vignette (blurs/darkens edges like a real camera)
+  float getDoFVignette(vec2 uv) {
+    vec2 center = uv - 0.5;
+    return 1.0 - smoothstep(0.28, 0.72, dot(center, center) * 3.2);
+  }
+
+  void main() {
+    vec3 viewDir = normalize(vViewPosition);
+    vec3 normal = normalize(vNormal);
+
+    bool isRare      = (uRarity < 0.5);
+    bool isEpic      = (uRarity > 0.5 && uRarity < 1.5);
+    bool isLegendary = (uRarity > 1.5);
+
+    bool inArtwork = (vUv.x > 0.05 && vUv.x < 0.95 && vUv.y > 0.448 && vUv.y < 0.852);
+
+    // 1. Parallax artwork shift
+    vec2 artUv = vUv;
+    bool needsParallax = (uFoilStyle == 5.0) || (isRare && (uFoilStyle == 1.0 || uFoilStyle == 0.0));
+    if (needsParallax && inArtwork) {
+      float pStrength = (uFoilStyle == 5.0) ? 0.045 : 0.022;
+      artUv.xy += viewDir.xy * pStrength * uFoilIntensity;
+      artUv.x = clamp(artUv.x, 0.051, 0.949);
+      artUv.y = clamp(artUv.y, 0.449, 0.851);
+    }
+
+    // 2. Chromatic Aberration on border edges (lens-flare RGB split)
+    float bxBase = smoothstep(0.0, uBorderWidth * 1.8, vUv.x) * smoothstep(0.0, uBorderWidth * 1.8, 1.0 - vUv.x);
+    float byBase = smoothstep(0.0, uBorderWidth * 1.8, vUv.y) * smoothstep(0.0, uBorderWidth * 1.8, 1.0 - vUv.y);
+    float edgeFactor = 1.0 - bxBase * byBase;
+    float chromaAmount = edgeFactor * uFoilIntensity * 0.012;
+    vec2 uvR = artUv + vec2( chromaAmount, 0.0);
+    vec2 uvB = artUv + vec2(-chromaAmount, 0.0);
+    vec4 baseColor;
+    baseColor.r = texture2D(baseTexture, clamp(uvR, 0.001, 0.999)).r;
+    baseColor.g = texture2D(baseTexture, artUv).g;
+    baseColor.b = texture2D(baseTexture, clamp(uvB, 0.001, 0.999)).b;
+    baseColor.a = texture2D(baseTexture, artUv).a;
+    vec3 finalColor = baseColor.rgb;
+
+    // 3. Holographic Foil Masking
+    float foilMask = 0.0;
+    if (uFoilStyle == 1.0) {
+      foilMask = inArtwork ? 1.0 : 0.0;
+    } else if (uFoilStyle == 2.0) {
+      foilMask = inArtwork ? 0.0 : 1.0;
+      if (vUv.y < 0.45) foilMask *= 0.4;
+    } else if (uFoilStyle == 3.0 || uFoilStyle == 4.0 || uFoilStyle == 5.0) {
+      foilMask = 1.0;
+      if (vUv.y < 0.45) foilMask = 0.35;
+      if (vUv.y > 0.85) foilMask = 0.5;
+      if (uIsBleed == 0.0 && inArtwork) {
+        foilMask = 0.0;
+      }
+    }
+
+    // 4. Iridescence
+    vec3 holoColor = getIridescence(normal, viewDir);
+    if (uFoilStyle == 4.0) {
+      vec3 goldSheen = vec3(1.0, 0.82, 0.3) * (max(0.0, dot(normal, viewDir)) * 0.4 + 0.6);
+      holoColor = mix(holoColor, goldSheen, 0.75);
+    }
+    float fresnel = pow(1.0 - max(dot(normal, viewDir), 0.0), 3.0);
+    float holoStrength = fresnel * uFoilIntensity * 0.5 + 0.1 * uFoilIntensity;
+    finalColor = mix(finalColor, holoColor, holoStrength * foilMask);
+
+    // 5. Galaxy Star Sparkle
+    float starSparkle = getGalaxyStars(artUv);
+    float angleTwinkle = max(0.0, dot(normal, viewDir));
+    vec3 sparkleColor = (uFoilStyle == 4.0) ? vec3(1.0, 0.88, 0.4) : vec3(1.0, 0.96, 0.88);
+    finalColor += sparkleColor * starSparkle * uFoilIntensity * (0.2 + 0.8 * angleTwinkle) * foilMask * 0.8;
+
+    // 6. Epic: Plasma energy pulse overlay
+    if (isEpic) {
+      float plasma = getEpicPlasma(vUv) * uFoilIntensity * 0.18;
+      vec3 plasmaColor = vec3(0.75, 0.1, 1.0);
+      finalColor += plasmaColor * plasma;
+    }
+
+    // 7. Legendary: Subsurface edge glow + diamond caustics
+    if (isLegendary) {
+      float edgeGlow = getLegendaryEdgeGlow(vUv, uBorderWidth) * uFoilIntensity;
+      finalColor += vec3(1.0, 0.72, 0.15) * edgeGlow * 0.35;
+      float caustic = getDiamondCaustic(vUv) * uFoilIntensity * 0.12 * fresnel;
+      finalColor += vec3(1.0, 0.90, 0.50) * caustic;
+    }
+
+    // 8. Rare: Anisotropic brushed-metal highlight
+    if (isRare) {
+      float aniso = getAnisotropicHighlight(normal, viewDir) * uFoilIntensity * 0.30;
+      finalColor += vec3(0.6, 0.95, 1.0) * aniso;
+    }
+
+    // 9. Specular gloss (cursor-following hotspot)
+    vec2 mousePos = vec2(uMouseX, uMouseY);
+    float specDist = length(vUv - mousePos);
+    float specular = smoothstep(0.24, 0.0, specDist) * 0.09;
+    finalColor += vec3(1.0, 0.99, 0.96) * specular * uFoilIntensity * foilMask;
+
+    // 10. Border glow with color
+    float bx = smoothstep(0.0, uBorderWidth, vUv.x) * smoothstep(0.0, uBorderWidth, 1.0 - vUv.x);
+    float by = smoothstep(0.0, uBorderWidth, vUv.y) * smoothstep(0.0, uBorderWidth, 1.0 - vUv.y);
+    float borderMask = 1.0 - bx * by;
+    borderMask = pow(borderMask, 0.5);
+    float metallicSheen = pow(max(dot(normal, normalize(vec3(0.3, 0.5, 0.8))), 0.0), 4.0);
+    finalColor += uBorderColor * metallicSheen * uFoilIntensity * 0.10;
+    finalColor = mix(finalColor, uBorderColor, borderMask * 0.72);
+
+    // 11. Depth of Field vignette (premium cinematic look)
+    float dof = getDoFVignette(vUv);
+    finalColor *= mix(0.82, 1.0, dof);
+
+    // 12. Film grain (subtle cinematic texture)
+    float grain = getFilmGrain(vUv) * 0.025;
+    finalColor += grain;
 
     gl_FragColor = vec4(finalColor, baseColor.a);
+    #include <colorspace_fragment>
   }
 `;
 
-// Procedural card back texture
-function createCardBackTexture() {
+// Helper to draw a stylized branded MemeCats logo face
+function drawStylizedCatHead(ctx, cx, cy, radius, color, drawCrown = false) {
+  ctx.save();
+  ctx.strokeStyle = color;
+  ctx.lineWidth = radius * 0.08;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+
+  // Draw crown if legendary
+  if (drawCrown) {
+    ctx.save();
+    ctx.fillStyle = '#FEF08A';
+    ctx.strokeStyle = '#D97706';
+    ctx.lineWidth = radius * 0.06;
+    ctx.beginPath();
+    ctx.moveTo(cx - radius * 0.25, cy - radius * 0.45);
+    ctx.lineTo(cx - radius * 0.35, cy - radius * 0.8);
+    ctx.lineTo(cx - radius * 0.12, cy - radius * 0.62);
+    ctx.lineTo(cx, cy - radius * 0.88);
+    ctx.lineTo(cx + radius * 0.12, cy - radius * 0.62);
+    ctx.lineTo(cx + radius * 0.35, cy - radius * 0.8);
+    ctx.lineTo(cx + radius * 0.25, cy - radius * 0.45);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+
+    // Crown gems (3 little ruby dots on the crown tips)
+    ctx.fillStyle = '#EF4444';
+    ctx.beginPath();
+    ctx.arc(cx - radius * 0.35, cy - radius * 0.8, 3, 0, Math.PI * 2);
+    ctx.arc(cx, cy - radius * 0.88, 3, 0, Math.PI * 2);
+    ctx.arc(cx + radius * 0.35, cy - radius * 0.8, 3, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  // Draw cat ears and face outline
+  ctx.beginPath();
+  // Start top head center
+  ctx.moveTo(cx - radius * 0.25, cy - radius * 0.4);
+  // Left ear tip
+  ctx.lineTo(cx - radius * 0.65, cy - radius * 0.85);
+  // Left face down
+  ctx.lineTo(cx - radius * 0.65, cy - radius * 0.1);
+  // Left jaw
+  ctx.quadraticCurveTo(cx - radius * 0.55, cy + radius * 0.45, cx, cy + radius * 0.55);
+  // Right jaw
+  ctx.quadraticCurveTo(cx + radius * 0.55, cy + radius * 0.45, cx + radius * 0.65, cy - radius * 0.1);
+  // Right ear tip
+  ctx.lineTo(cx + radius * 0.65, cy - radius * 0.85);
+  // Right head center
+  ctx.lineTo(cx + radius * 0.25, cy - radius * 0.4);
+  ctx.closePath();
+  ctx.stroke();
+
+  // Whiskers (3 lines on each side)
+  ctx.lineWidth = radius * 0.05;
+  // Left whiskers
+  ctx.beginPath();
+  ctx.moveTo(cx - radius * 0.3, cy + radius * 0.1);
+  ctx.lineTo(cx - radius * 0.8, cy + radius * 0.05);
+  ctx.moveTo(cx - radius * 0.3, cy + radius * 0.18);
+  ctx.lineTo(cx - radius * 0.85, cy + radius * 0.18);
+  ctx.moveTo(cx - radius * 0.3, cy + radius * 0.26);
+  ctx.lineTo(cx - radius * 0.8, cy + radius * 0.3);
+  // Right whiskers
+  ctx.moveTo(cx + radius * 0.3, cy + radius * 0.1);
+  ctx.lineTo(cx + radius * 0.8, cy + radius * 0.05);
+  ctx.moveTo(cx + radius * 0.3, cy + radius * 0.18);
+  ctx.lineTo(cx + radius * 0.85, cy + radius * 0.18);
+  ctx.moveTo(cx + radius * 0.3, cy + radius * 0.26);
+  ctx.lineTo(cx + radius * 0.8, cy + radius * 0.3);
+  ctx.stroke();
+
+  // Glowing eyes (slits)
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  // Left eye
+  ctx.ellipse(cx - radius * 0.22, cy - radius * 0.08, radius * 0.1, radius * 0.04, -Math.PI/6, 0, Math.PI * 2);
+  // Right eye
+  ctx.ellipse(cx + radius * 0.22, cy - radius * 0.08, radius * 0.1, radius * 0.04, Math.PI/6, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Small nose
+  ctx.beginPath();
+  ctx.moveTo(cx - radius * 0.05, cy + radius * 0.12);
+  ctx.lineTo(cx + radius * 0.05, cy + radius * 0.12);
+  ctx.lineTo(cx, cy + radius * 0.17);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.restore();
+}
+
+// Procedural card back texture (MemeCats branded, unique per rarity)
+function createCardBackTexture(rarity) {
   const size = 512;
   const canvas = document.createElement('canvas');
   canvas.width = size;
   canvas.height = size;
   const ctx = canvas.getContext('2d');
+  
+  const r = (rarity || 'Common').toLowerCase();
+  
+  // 1. Establish Rarity-specific Themes
+  let bgGradientStart, bgGradientMid, bgGradientEnd;
+  let borderColorStart, borderColorMid, borderColorEnd;
+  let gridColor;
+  let swirlColor;
+  let medallionBg;
+  let symbolColor;
+  let textShadowColor;
+  let textFoiledColor;
+  let isLegendary = (r === 'legendary');
+  
+  if (r === 'rare') {
+    // Rare: Cyber Blue / Neon Cyan
+    bgGradientStart = '#0C4A6E';
+    bgGradientMid = '#0284C7';
+    bgGradientEnd = '#070F22';
+    borderColorStart = '#0284C7';
+    borderColorMid = '#38BDF8';
+    borderColorEnd = '#0369A1';
+    gridColor = 'rgba(56, 189, 248, 0.08)';
+    swirlColor = 'rgba(14, 165, 233, 0.45)';
+    medallionBg = 'rgba(7, 89, 133, 0.85)';
+    symbolColor = '#38BDF8';
+    textShadowColor = '#0369A1';
+    textFoiledColor = '#E0F2FE';
+  } else if (r === 'epic') {
+    // Epic: Cosmic Purple / Dark Nebula
+    bgGradientStart = '#4C1D95';
+    bgGradientMid = '#7C3AED';
+    bgGradientEnd = '#0F081D';
+    borderColorStart = '#7C3AED';
+    borderColorMid = '#C084FC';
+    borderColorEnd = '#5B21B6';
+    gridColor = 'rgba(192, 132, 252, 0.08)';
+    swirlColor = 'rgba(168, 85, 247, 0.45)';
+    medallionBg = 'rgba(88, 28, 135, 0.85)';
+    symbolColor = '#C084FC';
+    textShadowColor = '#5B21B6';
+    textFoiledColor = '#F3E8FF';
+  } else if (r === 'legendary') {
+    // Legendary: Royal Gold / Cosmic Stars
+    bgGradientStart = '#78350F';
+    bgGradientMid = '#0F172A';
+    bgGradientEnd = '#020617';
+    borderColorStart = '#D97706';
+    borderColorMid = '#FEF08A';
+    borderColorEnd = '#B45309';
+    gridColor = 'rgba(250, 204, 21, 0.08)';
+    swirlColor = 'rgba(245, 158, 11, 0.45)';
+    medallionBg = 'rgba(120, 53, 4, 0.85)';
+    symbolColor = '#FEF08A';
+    textShadowColor = '#78350F';
+    textFoiledColor = '#FEF08A';
+  } else {
+    // Common: Steel / Slate Tech
+    bgGradientStart = '#334155';
+    bgGradientMid = '#1E293B';
+    bgGradientEnd = '#0F172A';
+    borderColorStart = '#475569';
+    borderColorMid = '#94A3B8';
+    borderColorEnd = '#334155';
+    gridColor = 'rgba(148, 163, 184, 0.08)';
+    swirlColor = 'rgba(100, 116, 139, 0.35)';
+    medallionBg = 'rgba(51, 65, 85, 0.85)';
+    symbolColor = '#94A3B8';
+    textShadowColor = '#1E293B';
+    textFoiledColor = '#F1F5F9';
+  }
 
-  // Background
-  const bgGrad = ctx.createLinearGradient(0, 0, size, size);
-  bgGrad.addColorStop(0, '#1a1040');
-  bgGrad.addColorStop(0.5, '#2d1b69');
-  bgGrad.addColorStop(1, '#1a1040');
+  // Draw background circular gradient
+  const bgGrad = ctx.createRadialGradient(size/2, size/2, 20, size/2, size/2, size*0.7);
+  bgGrad.addColorStop(0, bgGradientStart);
+  bgGrad.addColorStop(0.5, bgGradientMid);
+  bgGrad.addColorStop(1, bgGradientEnd);
   ctx.fillStyle = bgGrad;
   ctx.fillRect(0, 0, size, size);
 
-  // Border
-  ctx.strokeStyle = '#A78BFA';
-  ctx.lineWidth = 12;
-  ctx.strokeRect(16, 16, size - 32, size - 32);
-
-  // Inner border
-  ctx.strokeStyle = 'rgba(168, 139, 250, 0.3)';
-  ctx.lineWidth = 2;
-  ctx.strokeRect(38, 38, size - 76, size - 76);
-
-  // Diagonal stripes pattern
-  ctx.save();
-  ctx.beginPath();
-  ctx.rect(38, 38, size - 76, size - 76);
-  ctx.clip();
-  for (let i = -size; i < size * 2; i += 40) {
-    ctx.strokeStyle = 'rgba(255,255,255,0.03)';
-    ctx.lineWidth = 20;
+  // Cosmic Grid Background
+  ctx.strokeStyle = gridColor;
+  ctx.lineWidth = 1.5;
+  for (let i = 0; i < size; i += 40) {
     ctx.beginPath();
-    ctx.moveTo(i, -10);
-    ctx.lineTo(i + size, size + 10);
+    ctx.moveTo(i, 0); ctx.lineTo(i, size);
+    ctx.moveTo(0, i); ctx.lineTo(size, i);
     ctx.stroke();
   }
-  ctx.restore();
 
-  // Center emblem — paw circle
+  // Draw beveled border
+  const borderGrad = ctx.createLinearGradient(0, 0, size, size);
+  borderGrad.addColorStop(0, borderColorStart);
+  borderGrad.addColorStop(0.25, borderColorMid);
+  borderGrad.addColorStop(0.5, borderColorStart);
+  borderGrad.addColorStop(0.75, borderColorMid);
+  borderGrad.addColorStop(1, borderColorEnd);
+  
+  ctx.strokeStyle = borderGrad;
+  ctx.lineWidth = 10;
+  const borderR = 20;
   ctx.beginPath();
-  ctx.arc(size / 2, size / 2, 70, 0, Math.PI * 2);
-  ctx.fillStyle = 'rgba(168, 139, 250, 0.15)';
-  ctx.fill();
-  ctx.strokeStyle = '#A78BFA';
-  ctx.lineWidth = 3;
+  ctx.roundRect(14, 14, size - 28, size - 28, borderR);
   ctx.stroke();
 
-  // Center paw print
-  ctx.fillStyle = '#C4B5FD';
-  // Main pad
+  // Thin inner rim
+  ctx.strokeStyle = borderColorMid;
+  ctx.lineWidth = 1.5;
   ctx.beginPath();
-  ctx.ellipse(size / 2, size / 2 + 18, 20, 16, 0, 0, Math.PI * 2);
-  ctx.fill();
-  // Toes
-  for (let i = -1; i <= 1; i++) {
-    ctx.beginPath();
-    ctx.ellipse(size / 2 + i * 18, size / 2 - 10, 9, 12, 0, 0, Math.PI * 2);
-    ctx.fill();
-  }
-  // Top toe
-  ctx.beginPath();
-  ctx.ellipse(size / 2, size / 2 - 28, 8, 10, 0, 0, Math.PI * 2);
-  ctx.fill();
+  ctx.roundRect(24, 24, size - 48, size - 48, borderR - 4);
+  ctx.stroke();
 
-  // Text
-  ctx.fillStyle = '#C4B5FD';
-  ctx.font = 'bold 20px Inter, sans-serif';
+  // Ornate corners
+  ctx.strokeStyle = borderGrad;
+  ctx.lineWidth = 3;
+  const borderCl = 28;
+  [[24, 24, 1, 1], [size-24, 24, -1, 1], [24, size-24, 1, -1], [size-24, size-24, -1, -1]].forEach(([x, y, dx, dy]) => {
+    ctx.beginPath();
+    ctx.moveTo(x + borderCl * dx, y);
+    ctx.lineTo(x, y);
+    ctx.lineTo(x, y + borderCl * dy);
+    ctx.stroke();
+    
+    if (r === 'legendary' || r === 'epic') {
+      ctx.beginPath();
+      ctx.arc(x + 12 * dx, y + 12 * dy, 4, 0, Math.PI * 2);
+      ctx.fillStyle = (r === 'legendary') ? '#EF4444' : '#A855F7';
+      ctx.fill();
+    }
+  });
+
+  // Cosmic swirls
+  ctx.save();
+  ctx.shadowColor = borderColorMid;
+  ctx.shadowBlur = 12;
+  ctx.strokeStyle = swirlColor;
+  ctx.lineWidth = 4;
+  
+  // Top left swirl
+  ctx.beginPath();
+  ctx.moveTo(80, 80);
+  ctx.quadraticCurveTo(size * 0.25, size * 0.4, size / 2 - 30, size / 2 - 30);
+  ctx.stroke();
+  
+  // Bottom right swirl
+  ctx.beginPath();
+  ctx.moveTo(size - 80, size - 80);
+  ctx.quadraticCurveTo(size * 0.75, size * 0.6, size / 2 + 30, size / 2 + 30);
+  ctx.stroke();
+  ctx.restore();
+
+  // Medallion base
+  const centerX = size / 2, centerY = size / 2;
+  ctx.save();
+  ctx.shadowColor = 'rgba(0,0,0,0.5)';
+  ctx.shadowBlur = 8;
+  ctx.shadowOffsetY = 3;
+  
+  ctx.fillStyle = medallionBg;
+  ctx.strokeStyle = borderGrad;
+  ctx.lineWidth = 5;
+  ctx.beginPath();
+  ctx.arc(centerX, centerY, 62, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+  ctx.restore();
+
+  // Draw custom MemeCats stylized cat head face emblem
+  drawStylizedCatHead(ctx, centerX, centerY, 50, symbolColor, isLegendary);
+
+  // Embossed text overlays
+  ctx.save();
   ctx.textAlign = 'center';
-  ctx.fillText('MemeCats', size / 2, size - 80);
+  ctx.font = '900 24px "Outfit", "Inter", "Arial Black", sans-serif';
+  
+  ctx.strokeStyle = textShadowColor;
+  ctx.lineWidth = 4;
+  ctx.lineJoin = 'round';
+  ctx.strokeText('MEMECATS', centerX, 68);
+  ctx.fillStyle = textFoiledColor;
+  ctx.fillText('MEMECATS', centerX, 68);
+
+  ctx.font = 'bold 11px "Inter", "Helvetica", sans-serif';
+  ctx.letterSpacing = '1px';
+  ctx.strokeStyle = textShadowColor;
+  ctx.lineWidth = 3;
+  ctx.strokeText('THE VIRAL COLLECTION', centerX, size - 48);
+  ctx.fillStyle = textFoiledColor;
+  ctx.fillText('THE VIRAL COLLECTION', centerX, size - 48);
+  ctx.restore();
 
   const tex = new THREE.CanvasTexture(canvas);
   tex.needsUpdate = true;
@@ -220,53 +912,83 @@ function initScene() {
 
   // Camera
   camera = new THREE.PerspectiveCamera(40, width / height, 0.1, 100);
-  camera.position.z = props.mode === 'mini' ? 6.5 : 5.5;
+  camera.position.z = props.mode === 'mini' ? 8.5 : 7.5;
 
   // Renderer
   renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
   renderer.setSize(width, height);
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, props.mode === 'mini' ? 1.5 : 2));
   renderer.setClearColor(0x000000, 0);
+  renderer.outputColorSpace = THREE.SRGBColorSpace;
   containerRef.value.appendChild(renderer.domElement);
 
-  // Lighting
-  scene.add(new THREE.AmbientLight(0xffffff, 0.7));
-  const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
-  dirLight.position.set(5, 5, 10);
-  scene.add(dirLight);
-  const rimLight = new THREE.DirectionalLight(0x8888ff, 0.4);
-  rimLight.position.set(-3, -2, 5);
+  // Ensure canvas receives touch events properly on mobile
+  renderer.domElement.style.touchAction = 'none';
+
+  // Lighting — intensity and color vary per rarity
+  const rCfg = rarityConfig[props.rarity] || rarityConfig.Common;
+  const ambientLight = new THREE.AmbientLight(0xffffff, rCfg.ambientIntensity);
+  scene.add(ambientLight);
+
+  const mainLight = new THREE.DirectionalLight(0xffffff, 1.1);
+  mainLight.position.set(3, 4, 8);
+  scene.add(mainLight);
+
+  // Rarity-specific rim light colors
+  const rimColors = {
+    Common:    0x94A3B8,
+    Rare:      0x06B6D4,
+    Epic:      0xC026D3,
+    Legendary: 0xF59E0B,
+  };
+  const rimColor = rimColors[props.rarity] || 0x6366f1;
+  const rimLight = new THREE.DirectionalLight(rimColor, 0.65);
+  rimLight.position.set(-4, -2, 5);
   scene.add(rimLight);
 
-  // Card group (for flip rotation)
+  const topLight = new THREE.DirectionalLight(rimColor, 0.30);
+  topLight.position.set(0, 6, 3);
+  scene.add(topLight);
+
+  // Dynamic animated point light that orbits the card (rarity-colored)
+  const dynLight = new THREE.PointLight(rimColor, props.rarity === 'Legendary' ? 1.8 : props.rarity === 'Epic' ? 1.2 : props.rarity === 'Rare' ? 0.8 : 0.0, 12);
+  dynLight.position.set(2, 1, 3);
+  scene.add(dynLight);
+  // Store reference for animation
+  scene.userData.dynLight = dynLight;
+  scene.userData.dynLightStartTime = performance.now();
+
+  // Card group
   cardGroup = new THREE.Group();
   scene.add(cardGroup);
 
   // Card geometry
-  const cardGeo = new THREE.BoxGeometry(3.0, 4.2, 0.08, 1, 1, 1);
+  const cardGeo = new THREE.BoxGeometry(3.0, 4.2, 0.06, 1, 1, 1);
 
-  // Back texture
-  backTexture = createCardBackTexture();
+// Back texture
+  backTexture = createCardBackTexture(props.rarity);
 
-  // Card back material
   const backMat = new THREE.MeshStandardMaterial({
     map: backTexture,
-    roughness: 0.7,
-    metalness: 0.1,
+    roughness: 0.6,
+    metalness: 0.15,
   });
 
-  // Card back mesh
-  cardBackMesh = new THREE.Mesh(cardGeo, backMat);
-  cardBackMesh.rotation.y = Math.PI;
-  cardGroup.add(cardBackMesh);
-
-  // Card front — needs texture loaded
-  const cfg = config();
+  // Front configuration
+  const cfg = resolveConfig();
   shaderUniforms.uFoilIntensity.value = cfg.foilIntensity;
   shaderUniforms.uBorderColor.value = new THREE.Color(cfg.borderColor);
   shaderUniforms.uBorderWidth.value = cfg.borderWidth;
+  
+  let rarityId = 0.0;
+  if (props.rarity === 'Epic') rarityId = 1.0;
+  else if (props.rarity === 'Legendary') rarityId = 2.0;
+  shaderUniforms.uRarity.value = rarityId;
+  shaderUniforms.uFoilStyle.value = getFoilStyleId(props.foilStyle, props.rarity);
+  const isBleed = props.foilStyle === 'Full Art ex' || props.foilStyle === 'Secret Gold' || props.foilStyle === 'Special Illustration';
+  shaderUniforms.uIsBleed.value = isBleed ? 1.0 : 0.0;
 
-  const needsShader = props.rarity === 'Epic' || props.rarity === 'Legendary';
+  const needsShader = props.foilStyle !== 'Standard' || props.rarity === 'Rare' || props.rarity === 'Epic' || props.rarity === 'Legendary';
 
   const loader = new THREE.TextureLoader();
   const placeholderUrl = `/placeholders/${props.rarity.toLowerCase()}-placeholder.svg`;
@@ -275,8 +997,24 @@ function initScene() {
   loader.load(
     texUrl,
     (tex) => {
-      frontTexture = tex;
-      shaderUniforms.baseTexture.value = tex;
+      if (!cardGroup) return;
+      const canvas = drawCardCanvas({
+        name: props.name,
+        description: props.description,
+        rarity: props.rarity,
+        hypeScore: props.hypeScore,
+        likesPerSec: props.likesPerSec,
+        element: props.element,
+        foilStyle: props.foilStyle,
+        imgZoom: props.imgZoom,
+        imgOffsetX: props.imgOffsetX,
+        imgOffsetY: props.imgOffsetY
+      }, tex.image);
+
+      const canvasTex = new THREE.CanvasTexture(canvas);
+      canvasTex.colorSpace = THREE.SRGBColorSpace;
+      frontTexture = canvasTex;
+      shaderUniforms.baseTexture.value = canvasTex;
       textureLoading.value = false;
 
       if (needsShader) {
@@ -287,37 +1025,80 @@ function initScene() {
           side: THREE.FrontSide,
         });
 
-        const materials = [
-          new THREE.MeshStandardMaterial({ color: 0x1a1a2e, roughness: 0.8 }),
-          new THREE.MeshStandardMaterial({ color: 0x1a1a2e, roughness: 0.8 }),
-          new THREE.MeshStandardMaterial({ color: 0x1a1a2e, roughness: 0.8 }),
-          new THREE.MeshStandardMaterial({ color: 0x1a1a2e, roughness: 0.8 }),
-          customShaderMaterial,
-          new THREE.MeshStandardMaterial({ color: 0x1a1a2e, roughness: 0.8 }),
-        ];
+        const edgeColor = new THREE.Color(cfg.borderColor).multiplyScalar(0.3);
+        const edgeMat = new THREE.MeshStandardMaterial({
+          color: edgeColor,
+          roughness: 0.4,
+          metalness: 0.3,
+          emissive: new THREE.Color(cfg.emissive),
+          emissiveIntensity: cfg.emissiveIntensity * 0.3,
+        });
+
+        const materials = [edgeMat, edgeMat, edgeMat, edgeMat, customShaderMaterial, backMat];
         cardFrontMesh = new THREE.Mesh(cardGeo, materials);
       } else {
         const frontMat = new THREE.MeshStandardMaterial({
-          map: tex,
+          map: canvasTex,
           roughness: cfg.roughness,
           metalness: cfg.metalness,
         });
-        cardFrontMesh = new THREE.Mesh(cardGeo, frontMat);
+
+        const edgeMat = new THREE.MeshStandardMaterial({
+          color: new THREE.Color(cfg.borderColor).multiplyScalar(0.2),
+          roughness: 0.5,
+          metalness: 0.1,
+        });
+
+        const materials = [edgeMat, edgeMat, edgeMat, edgeMat, frontMat, backMat];
+        cardFrontMesh = new THREE.Mesh(cardGeo, materials);
       }
 
       cardGroup.add(cardFrontMesh);
       if (isFlipped) cardGroup.rotation.y = Math.PI;
+
+      // Spawn stardust particles if Special Illustration
+      initParticles();
     },
     undefined,
     () => {
-      // Error — use fallback
+      if (!cardGroup) return;
+      const canvas = drawCardCanvas({
+        name: props.name,
+        description: props.description,
+        rarity: props.rarity,
+        hypeScore: props.hypeScore,
+        likesPerSec: props.likesPerSec,
+        element: props.element,
+        foilStyle: props.foilStyle,
+        imgZoom: props.imgZoom,
+        imgOffsetX: props.imgOffsetX,
+        imgOffsetY: props.imgOffsetY
+      }, null);
+
+      const canvasTex = new THREE.CanvasTexture(canvas);
+      canvasTex.colorSpace = THREE.SRGBColorSpace;
+      frontTexture = canvasTex;
       textureLoading.value = false;
-      const fallbackMat = new THREE.MeshStandardMaterial({
-        color: new THREE.Color(cfg.borderColor),
-        roughness: 0.6,
+
+      const frontMat = new THREE.MeshStandardMaterial({
+        map: canvasTex,
+        roughness: cfg.roughness,
+        metalness: cfg.metalness,
       });
-      cardFrontMesh = new THREE.Mesh(cardGeo, fallbackMat);
+
+      const edgeMat = new THREE.MeshStandardMaterial({
+        color: new THREE.Color(cfg.borderColor).multiplyScalar(0.2),
+        roughness: 0.5,
+        metalness: 0.1,
+      });
+
+      const materials = [edgeMat, edgeMat, edgeMat, edgeMat, frontMat, backMat];
+      cardFrontMesh = new THREE.Mesh(cardGeo, materials);
       cardGroup.add(cardFrontMesh);
+      if (isFlipped) cardGroup.rotation.y = Math.PI;
+
+      // Spawn stardust particles if Special Illustration
+      initParticles();
     }
   );
 
@@ -334,7 +1115,6 @@ function animate() {
   if (isFlipping) {
     const elapsed = now - flipStartTime;
     const t = Math.min(elapsed / flipDuration, 1.0);
-    // Ease in-out cubic
     const eased = t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
     const targetAngle = isFlipped ? Math.PI : 0;
     const startAngle = isFlipped ? 0 : Math.PI;
@@ -342,30 +1122,90 @@ function animate() {
 
     if (t >= 1.0) {
       isFlipping = false;
-      flipProgress = isFlipped ? 1 : 0;
       emit('flip-complete');
     }
   }
 
-  // Update shader time
+  // Update shader uniforms
   if (customShaderMaterial) {
     shaderUniforms.uTime.value = now * 0.001;
   }
 
-  // Smooth tilt
-  currentRotX += (targetRotX - currentRotX) * 0.08;
-  currentRotY += (targetRotY - currentRotY) * 0.08;
+  // Animate dynamic rim point light orbital movement
+  if (scene && scene.userData.dynLight) {
+    const t = (now - (scene.userData.dynLightStartTime || now)) * 0.001;
+    const dl = scene.userData.dynLight;
+    dl.position.x = Math.cos(t * 0.7) * 2.5;
+    dl.position.y = Math.sin(t * 0.5) * 1.8;
+    dl.position.z = 3.0 + Math.sin(t * 1.1) * 0.6;
+  }
+
+  // Animate particles per rarity type
+  if (particlesMesh) {
+    const positions = particlesMesh.geometry.attributes.position.array;
+    const speeds = particlesMesh.userData.speeds;
+    const particleCount = speeds.length;
+    const elapsed = (now - (particlesMesh.userData.startTime || now)) * 0.001;
+    const delta = 0.016;
+
+    for (let i = 0; i < particleCount; i++) {
+      const sp = speeds[i];
+
+      if (sp.type === 'orbit') {
+        // Orbital motion around card center
+        sp.angle += sp.orbit;
+        positions[i * 3]     = Math.cos(sp.angle) * sp.radius;
+        positions[i * 3 + 1] = Math.sin(sp.angle) * sp.radiusY;
+        // Legendary inner ring pulses inward/outward
+        if (sp.ring === 'inner') {
+          const pulse = 1.0 + 0.08 * Math.sin(elapsed * 2.0 + i);
+          positions[i * 3]     = Math.cos(sp.angle) * sp.radius * pulse;
+          positions[i * 3 + 1] = Math.sin(sp.angle) * sp.radiusY * pulse;
+        }
+      } else {
+        // Drift upward (Rare edge sparks)
+        positions[i * 3 + 1] += sp.y * delta;
+        positions[i * 3]     += sp.x * delta;
+        if (positions[i * 3 + 1] > 2.3) {
+          positions[i * 3 + 1] = -2.3;
+          positions[i * 3]     = (Math.random() - 0.5) * 3.0;
+        }
+      }
+    }
+    particlesMesh.geometry.attributes.position.needsUpdate = true;
+
+    // Pulse particle opacity for Epic
+    if (props.rarity === 'Epic') {
+      particlesMesh.material.opacity = 0.65 + 0.25 * Math.sin(elapsed * 1.5);
+    }
+  }
+
+  // Spring tilt — 3-mode: instant on touch, smooth on hover, gentle return on idle
+  const mode = isTouchTilting || isPinching ? 'touch' : isHovering ? 'hover' : 'release';
+  const stiff = mode === 'touch' ? springStiffness : mode === 'hover' ? hoverStiffness : releaseStiffness;
+  const damp = mode === 'touch' ? springDamping : mode === 'hover' ? hoverDamping : releaseDamping;
+  const ax = (targetRotX - currentRotX) * stiff;
+  const ay = (targetRotY - currentRotY) * stiff;
+  velocityX = (velocityX + ax) * damp;
+  velocityY = (velocityY + ay) * damp;
+  currentRotX += velocityX;
+  currentRotY += velocityY;
 
   if (!isFlipping) {
     cardGroup.rotation.x = currentRotY * 0.5;
     cardGroup.rotation.y = (isFlipped ? Math.PI : 0) + currentRotX * 0.5;
   }
 
+  // Smooth scale interpolation
+  const currentScale = renderedScale.value;
+  const scaleDiff = cardScale.value - currentScale;
+  renderedScale.value = currentScale + scaleDiff * 0.15;
+
   renderer.render(scene, camera);
 }
 
-// Pointer interaction
-const tiltFactor = () => props.mode === 'mini' ? 0.5 : 0.8;
+// Pointer interaction calculations
+const tiltFactor = () => props.mode === 'mini' ? 0.4 : 0.7;
 
 function calcTilt(clientX, clientY) {
   const rect = containerRef.value?.getBoundingClientRect();
@@ -374,17 +1214,139 @@ function calcTilt(clientX, clientY) {
   const y = ((clientY - rect.top) / rect.height - 0.5) * 2;
   targetRotX = x * tiltFactor();
   targetRotY = -y * tiltFactor();
+
+  // Update gloss position
+  glossX.value = ((clientX - rect.left) / rect.width) * 100;
+  glossY.value = ((clientY - rect.top) / rect.height) * 100;
+
+  // Update shader coordinates
+  if (customShaderMaterial) {
+    shaderUniforms.uMouseX.value = (clientX - rect.left) / rect.width;
+    shaderUniforms.uMouseY.value = 1.0 - (clientY - rect.top) / rect.height;
+  }
 }
 
-function onPointerMove(e) { calcTilt(e.clientX, e.clientY); }
-function onTouchMove(e) {
-  if (e.touches.length === 1) calcTilt(e.touches[0].clientX, e.touches[0].clientY);
+function onPointerMove(e) {
+  isHovering = true;
+  calcTilt(e.clientX, e.clientY);
 }
-function onPointerLeave() { targetRotX = 0; targetRotY = 0; }
+
+// === UNIFIED TOUCH HANDLERS (single source of truth) ===
+let isTouchTilting = false;
+let isHovering = false; // desktop mouse hover tracking
+let touchStartPos = { x: 0, y: 0 }; // untuk deteksi tap vs drag
+const TAP_THRESHOLD = 8; // max pixel movement untuk dianggap "tap"
+
+function onTouchStartTilt(e) {
+  // 2-finger: init pinch-to-zoom (only when allowed)
+  if (e.touches.length === 2 && props.allowZoom && props.focused && props.mode !== 'mini') {
+    e.preventDefault();
+    isPinching = true;
+    const dx = e.touches[0].clientX - e.touches[1].clientX;
+    const dy = e.touches[0].clientY - e.touches[1].clientY;
+    initialPinchDist = Math.sqrt(dx * dx + dy * dy);
+    initialScale = cardScale.value;
+    return;
+  }
+  // 1-finger: start tilt tracking + record position for tap detection
+  if (e.touches.length === 1) {
+    isTouchTilting = true;
+    touchStartPos = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+    calcTilt(e.touches[0].clientX, e.touches[0].clientY);
+  }
+}
+
+function onTouchMoveTilt(e) {
+  // 2-finger pinch-to-zoom
+  if (e.touches.length === 2 && props.allowZoom && props.focused && props.mode !== 'mini') {
+    if (!isPinching) {
+      isPinching = true;
+      const dx = e.touches[0].clientX - e.touches[1].clientX;
+      const dy = e.touches[0].clientY - e.touches[1].clientY;
+      initialPinchDist = Math.sqrt(dx * dx + dy * dy);
+      initialScale = cardScale.value;
+    } else {
+      const dx = e.touches[0].clientX - e.touches[1].clientX;
+      const dy = e.touches[0].clientY - e.touches[1].clientY;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (initialPinchDist > 0) {
+        const scaleFactor = dist / initialPinchDist;
+        let targetScale = initialScale * scaleFactor;
+        targetScale = Math.max(0.7, Math.min(2.0, targetScale));
+        cardScale.value = targetScale;
+      }
+    }
+    return;
+  }
+
+  // 1-finger tilt — works on ALL cards
+  if (e.touches.length === 1 && !isPinching && isTouchTilting) {
+    calcTilt(e.touches[0].clientX, e.touches[0].clientY);
+  }
+}
+
+function onTouchEndTilt(e) {
+  // Deteksi TAP (sentuh tanpa geser) → trigger flip seperti click
+  if (e.touches.length === 0 && isTouchTilting && !isPinching) {
+    const dx = (e.changedTouches?.[0]?.clientX || touchStartPos.x) - touchStartPos.x;
+    const dy = (e.changedTouches?.[0]?.clientY || touchStartPos.y) - touchStartPos.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+
+    if (dist < TAP_THRESHOLD) {
+      // Ini TAP, bukan drag — trigger flip
+      onClick();
+    }
+  }
+
+  if (e.touches.length < 2) {
+    isPinching = false;
+  }
+  if (e.touches.length === 0) {
+    isTouchTilting = false;
+    // Only reset targets if not also being hovered by mouse
+    if (!isHovering) {
+      targetRotX = 0;
+      targetRotY = 0;
+      glossX.value = 50;
+      glossY.value = 50;
+      if (customShaderMaterial) {
+        shaderUniforms.uMouseX.value = 0.5;
+        shaderUniforms.uMouseY.value = 0.5;
+      }
+    }
+  }
+}
+
+function onPointerLeave() {
+  isHovering = false;
+  targetRotX = 0;
+  targetRotY = 0;
+  glossX.value = 50;
+  glossY.value = 50;
+  cardScale.value = 1.0;
+  if (customShaderMaterial) {
+    shaderUniforms.uMouseX.value = 0.5;
+    shaderUniforms.uMouseY.value = 0.5;
+  }
+}
+
+function onWheel(e) {
+  if (props.mode === 'mini' || !props.allowZoom || !props.focused) return;
+  e.preventDefault();
+  const zoomSpeed = 0.08;
+  let targetScale = cardScale.value - Math.sign(e.deltaY) * zoomSpeed;
+  targetScale = Math.max(0.7, Math.min(2.0, targetScale));
+  cardScale.value = targetScale;
+}
 
 function onClick() {
-  if (!isFlipping) {
-    emit('click');
+  if (isFlipping) return;
+  emit('click');
+  if (props.allowZoom) {
+    if (props.focused) {
+      toggleFlip();
+    }
+  } else {
     toggleFlip();
   }
 }
@@ -397,26 +1359,152 @@ function toggleFlip() {
   emit('flip-start');
 }
 
-// Watch for flipped prop change (external flip trigger)
+// Watch flipped prop
 watch(() => props.flipped, (newVal) => {
   if (newVal !== isFlipped && !isFlipping) toggleFlip();
 });
 
-// Watch for imageUrl changes
-watch(() => props.imageUrl, (newUrl) => {
-  if (newUrl && frontTexture && cardFrontMesh) {
-    const loader = new THREE.TextureLoader();
-    loader.load(newUrl, (tex) => {
+// Watch focused prop to scale up card preview
+watch(() => props.focused, (newVal) => {
+  if (newVal) {
+    cardScale.value = 1.25;
+  } else {
+    cardScale.value = 1.0;
+  }
+});
+
+// Watch cardScale to bubble zoom status changes
+watch(cardScale, (newVal) => {
+  emit('zoom-change', newVal > 1.05);
+});
+
+// Reload/refresh textures dynamically
+function updateTexture() {
+  if (!frontTexture || !cardFrontMesh) return;
+  const cfg = resolveConfig();
+  
+  // Sync uniforms
+  if (customShaderMaterial) {
+    shaderUniforms.uFoilIntensity.value = cfg.foilIntensity;
+    shaderUniforms.uBorderColor.value = new THREE.Color(cfg.borderColor);
+    shaderUniforms.uBorderWidth.value = cfg.borderWidth;
+    let rarityId = 0.0;
+    if (props.rarity === 'Epic') rarityId = 1.0;
+    else if (props.rarity === 'Legendary') rarityId = 2.0;
+    shaderUniforms.uRarity.value = rarityId;
+    shaderUniforms.uFoilStyle.value = getFoilStyleId(props.foilStyle, props.rarity);
+    const isBleed = props.foilStyle === 'Full Art ex' || props.foilStyle === 'Secret Gold' || props.foilStyle === 'Special Illustration';
+    shaderUniforms.uIsBleed.value = isBleed ? 1.0 : 0.0;
+  }
+
+  // Regenerate back texture dynamically to reflect rarity changes on the card back
+  const newBackTexture = createCardBackTexture(props.rarity);
+  if (Array.isArray(cardFrontMesh.material)) {
+    cardFrontMesh.material[5].map = newBackTexture;
+    cardFrontMesh.material[5].needsUpdate = true;
+  }
+  backTexture?.dispose();
+  backTexture = newBackTexture;
+
+  const loader = new THREE.TextureLoader();
+  const placeholderUrl = `/placeholders/${props.rarity.toLowerCase()}-placeholder.svg`;
+  const texUrl = props.imageUrl || placeholderUrl;
+
+  loader.load(
+    texUrl,
+    (tex) => {
+      const canvas = drawCardCanvas({
+        name: props.name,
+        description: props.description,
+        rarity: props.rarity,
+        hypeScore: props.hypeScore,
+        likesPerSec: props.likesPerSec,
+        element: props.element,
+        foilStyle: props.foilStyle,
+        imgZoom: props.imgZoom,
+        imgOffsetX: props.imgOffsetX,
+        imgOffsetY: props.imgOffsetY
+      }, tex.image);
+
+      const canvasTex = new THREE.CanvasTexture(canvas);
+      canvasTex.colorSpace = THREE.SRGBColorSpace;
+
       if (customShaderMaterial) {
-        shaderUniforms.baseTexture.value = tex;
-      } else if (cardFrontMesh.material.map) {
-        cardFrontMesh.material.map = tex;
-        cardFrontMesh.material.needsUpdate = true;
+        shaderUniforms.baseTexture.value = canvasTex;
+      } else {
+        if (Array.isArray(cardFrontMesh.material)) {
+          cardFrontMesh.material[4].map = canvasTex;
+          cardFrontMesh.material[4].needsUpdate = true;
+        } else {
+          cardFrontMesh.material.map = canvasTex;
+          cardFrontMesh.material.needsUpdate = true;
+        }
       }
       frontTexture?.dispose();
-      frontTexture = tex;
-    });
+      frontTexture = canvasTex;
+    },
+    undefined,
+    () => {
+      const canvas = drawCardCanvas({
+        name: props.name,
+        description: props.description,
+        rarity: props.rarity,
+        hypeScore: props.hypeScore,
+        likesPerSec: props.likesPerSec,
+        element: props.element,
+        foilStyle: props.foilStyle,
+        imgZoom: props.imgZoom,
+        imgOffsetX: props.imgOffsetX,
+        imgOffsetY: props.imgOffsetY
+      }, null);
+
+      const canvasTex = new THREE.CanvasTexture(canvas);
+      canvasTex.colorSpace = THREE.SRGBColorSpace;
+
+      if (customShaderMaterial) {
+        shaderUniforms.baseTexture.value = canvasTex;
+      } else {
+        if (Array.isArray(cardFrontMesh.material)) {
+          cardFrontMesh.material[4].map = canvasTex;
+          cardFrontMesh.material[4].needsUpdate = true;
+        } else {
+          cardFrontMesh.material.map = canvasTex;
+          cardFrontMesh.material.needsUpdate = true;
+        }
+      }
+      frontTexture?.dispose();
+      frontTexture = canvasTex;
+    }
+  );
+}
+
+// Watch all card state metadata props to trigger texture updates
+watch([
+  () => props.imageUrl,
+  () => props.name,
+  () => props.description,
+  () => props.rarity,
+  () => props.hypeScore,
+  () => props.likesPerSec,
+  () => props.element,
+  () => props.foilStyle,
+  () => props.imgZoom,
+  () => props.imgOffsetX,
+  () => props.imgOffsetY
+], () => {
+  updateTexture();
+
+  // Re-sync particles if foilStyle changes
+  if (particlesMesh && cardGroup) {
+    cardGroup.remove(particlesMesh);
+    if (particlesMesh.geometry) particlesMesh.geometry.dispose();
+    if (particlesMesh.material) {
+      if (particlesMesh.material.map) particlesMesh.material.map.dispose();
+      particlesMesh.material.dispose();
+    }
+    particlesMesh = null;
   }
+  initParticles();
 });
 
 function onResize() {
@@ -432,6 +1520,15 @@ function onResize() {
 function cleanup() {
   cancelAnimationFrame(animationId);
   animationId = null;
+  if (particlesMesh && cardGroup) {
+    cardGroup.remove(particlesMesh);
+    if (particlesMesh.geometry) particlesMesh.geometry.dispose();
+    if (particlesMesh.material) {
+      if (particlesMesh.material.map) particlesMesh.material.map.dispose();
+      particlesMesh.material.dispose();
+    }
+    particlesMesh = null;
+  }
   if (cardGroup && scene) scene.remove(cardGroup);
   [frontTexture, backTexture].forEach(t => t?.dispose());
   if (customShaderMaterial) customShaderMaterial.dispose();
@@ -441,12 +1538,21 @@ function cleanup() {
 }
 
 onMounted(() => {
-  nextTick(initScene);
+  nextTick(() => {
+    initScene();
+    if (containerRef.value) {
+      // Only wheel needs addEventListener (touch is handled by template directives)
+      containerRef.value.addEventListener('wheel', onWheel, { passive: false });
+    }
+  });
   window.addEventListener('resize', onResize);
 });
 
 onBeforeUnmount(() => {
   window.removeEventListener('resize', onResize);
+  if (containerRef.value) {
+    containerRef.value.removeEventListener('wheel', onWheel);
+  }
   cleanup();
 });
 </script>

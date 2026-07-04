@@ -7,13 +7,27 @@ export const useAuthStore = defineStore('auth', () => {
 
   const isLoggedIn = computed(() => !!token.value);
 
+  // Safe JSON parser — handles empty responses (e.g. backend down)
+  async function safeJson(res) {
+    const text = await res.text();
+    try {
+      return JSON.parse(text);
+    } catch {
+      // If backend is down / proxy fails, text is empty or HTML
+      if (!text || text.trim() === '') {
+        throw { status: res.status, code: 'BACKEND_OFFLINE', message: 'Server tidak merespon. Coba lagi nanti.' };
+      }
+      throw { status: res.status, code: 'INVALID_RESPONSE', message: `Respon tidak valid (${res.status}). Coba lagi.` };
+    }
+  }
+
   async function register(username, password) {
     const res = await fetch('/api/auth/register', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username, password }),
     });
-    const data = await res.json();
+    const data = await safeJson(res);
     if (!res.ok) throw data;
     token.value = data.token;
     user.value = data.user;
@@ -26,7 +40,7 @@ export const useAuthStore = defineStore('auth', () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username, password }),
     });
-    const data = await res.json();
+    const data = await safeJson(res);
     if (!res.ok) throw data;
     token.value = data.token;
     user.value = data.user;
@@ -43,7 +57,7 @@ export const useAuthStore = defineStore('auth', () => {
       user.value = null;
       return null;
     }
-    const data = await res.json();
+    const data = await safeJson(res);
     user.value = data.user;
     return data.user;
   }

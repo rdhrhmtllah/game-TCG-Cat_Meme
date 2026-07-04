@@ -36,7 +36,7 @@ export default requireAuth(async function handler(req, res) {
           eq(userInventory.id, cardInventoryId),
           eq(userInventory.userId, req.userId)
         ))
-        .for('update');
+        ;
 
       if (!invRow) {
         throw { status: 404, code: 'NOT_FOUND', message: 'Kartu tidak ditemukan di inventory kamu.' };

@@ -37,7 +37,7 @@ export default requireAuth(async function handler(req, res) {
       const [listing] = await tx.select()
         .from(marketplaceListings)
         .where(eq(marketplaceListings.id, listingId))
-        .for('update');
+        ;
 
       if (!listing) {
         throw { status: 404, code: 'NOT_FOUND', message: 'Listing tidak ditemukan.' };
@@ -57,7 +57,7 @@ export default requireAuth(async function handler(req, res) {
       const [buyer] = await tx.select({ coins: users.coins, createdAt: users.createdAt })
         .from(users)
         .where(eq(users.id, req.userId))
-        .for('update');
+        ;
 
       if (!buyer) {
         throw { status: 404, code: 'NOT_FOUND', message: 'User tidak ditemukan.' };
@@ -76,7 +76,7 @@ export default requireAuth(async function handler(req, res) {
           eq(userInventory.userId, listing.sellerId),
           eq(userInventory.cardId, listing.cardId)
         ))
-        .for('update');
+        ;
 
       // Cek sybil lock
       if (cardRow?.user_inventory?.isAccountBound) {

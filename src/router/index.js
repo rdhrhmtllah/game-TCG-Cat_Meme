@@ -39,6 +39,12 @@ const routes = [
     meta: { requiresAuth: true },
   },
   {
+    path: '/activities',
+    name: 'Activities',
+    component: () => import('@/views/ActivityHub.vue'),
+    meta: { requiresAuth: true },
+  },
+  {
     path: '/admin',
     name: 'AdminCards',
     component: () => import('@/views/AdminCards.vue'),

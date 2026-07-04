@@ -13,6 +13,7 @@ import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { join, extname } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { logRequest, logInfo, logError as logServerError } from './_lib/logger.js';
 
 const PORT = process.env.PORT || 3000;
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
@@ -55,6 +56,8 @@ function sendJson(res, status, data) {
 }
 
 const server = createServer(async (req, res) => {
+  const startTime = Date.now();
+
   // CORS preflight
   if (req.method === 'OPTIONS') {
     res.writeHead(204, {
@@ -62,7 +65,9 @@ const server = createServer(async (req, res) => {
       'Access-Control-Allow-Methods': 'GET, POST, PATCH, DELETE, OPTIONS',
       'Access-Control-Allow-Headers': 'Content-Type, Authorization',
     });
-    return res.end();
+    res.end();
+    logRequest(req.method, req.url, 204, Date.now() - startTime);
+    return;
   }
 
   // Parse body untuk POST/PATCH
@@ -110,8 +115,9 @@ const server = createServer(async (req, res) => {
         break;
       } catch (err) {
         if (err.code !== 'ERR_MODULE_NOT_FOUND') {
-          console.error(`[dev-server] Error loading ${pathname}:`, err.message);
+          logServerError('dev-server', err);
           sendJson(res, 500, { message: 'Internal server error', code: 'INTERNAL_ERROR' });
+          logRequest(req.method, pathname, 500, Date.now() - startTime);
           return;
         }
       }
@@ -119,16 +125,21 @@ const server = createServer(async (req, res) => {
 
     if (!loaded || !handler) {
       sendJson(res, 404, { message: `Endpoint tidak ditemukan: ${pathname}`, code: 'NOT_FOUND' });
+      logRequest(req.method, pathname, 404, Date.now() - startTime);
       return;
     }
 
-    // Wrap res.status dan res.json untuk kompatibilitas
+    // Wrap res.status dan res.json untuk kompatibilitas + capture status
+    let responseStatus = 200;
+    const originalSendJson = sendJson;
     res.status = function (code) {
+      responseStatus = code;
       this.statusCode = code;
       return this;
     };
     res.json = function (data) {
-      sendJson(res, this.statusCode || 200, data);
+      originalSendJson(res, this.statusCode || 200, data);
+      logRequest(req.method, pathname, this.statusCode || 200, Date.now() - startTime);
     };
 
     await handler(req, res);
@@ -137,9 +148,21 @@ const server = createServer(async (req, res) => {
 
   // Fallback: 404
   sendJson(res, 404, { message: 'Not found', code: 'NOT_FOUND' });
+  logRequest(req.method, pathname, 404, Date.now() - startTime);
 });
 
+// Validasi env vars kritis sebelum start
+const requiredEnvVars = ['JWT_SECRET', 'DATABASE_URL'];
+const missing = requiredEnvVars.filter(k => !process.env[k]);
+if (missing.length > 0) {
+  console.error(`\n❌ Missing required environment variables: ${missing.join(', ')}`);
+  console.error('   Pastikan file .env sudah diisi dengan benar.\n');
+  process.exit(1);
+}
+
 server.listen(PORT, () => {
-  console.log(`\n🚀 Dev API server running at http://localhost:${PORT}`);
-  console.log(`   Proxying /api/* → api/*.js handlers\n`);
+  logInfo('dev-server', `🚀 Dev API server running at http://localhost:${PORT}`);
+  logInfo('dev-server', `📋 Proxying /api/* → api/*.js handlers`);
+  logInfo('dev-server', `📊 Log viewer aktif — lihat terminal ini untuk monitoring`);
+  console.log(''); // spacer setelah pino-pretty output
 });

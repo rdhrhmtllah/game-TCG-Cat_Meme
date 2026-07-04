@@ -1,52 +1,63 @@
-﻿<template>
+<template>
   <!-- Mobile: bottom nav bar -->
-  <nav class="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-surface-elevated/95 backdrop-blur-md border-t border-white/10 safe-bottom">
-    <div class="flex justify-around items-center h-16 px-1">
-      <router-link
-        v-for="item in menuItems"
-        :key="item.to"
-        :to="item.to"
-        class="flex flex-col items-center justify-center gap-0.5 px-2 py-1 rounded-lg text-muted hover:text-secondary transition-colors relative min-w-[48px]"
-        active-class="!text-accent"
-      >
-        <IconBase :name="item.icon" :size="20" />
-        <span class="text-[10px] font-medium leading-none">{{ item.label }}</span>
-        <!-- Active indicator bar -->
-        <span class="absolute -top-0.5 left-1/2 -translate-x-1/2 w-6 h-0.5 bg-accent rounded-full opacity-0 transition-opacity router-link-active:opacity-100" />
-      </router-link>
-
-      <button
-        @click="handleLogout"
-        class="flex flex-col items-center justify-center gap-0.5 px-2 py-1 rounded-lg text-muted hover:text-red-400 transition-colors min-w-[48px]"
-        title="Logout"
-      >
-        <IconBase name="logout" :size="20" />
-        <span class="text-[10px] font-medium leading-none">Logout</span>
-      </button>
-    </div>
-  </nav>
-
-  <!-- Desktop: top nav bar -->
-  <nav class="hidden md:flex fixed top-0 left-0 right-0 z-50 bg-surface-elevated/95 backdrop-blur-md border-b border-white/10 h-14">
-    <div class="flex items-center justify-between w-full max-w-6xl mx-auto px-4">
-      <router-link to="/" class="text-lg font-bold text-accent flex items-center gap-2">
-        <span class="text-xl">🐱</span>
-        <span>MemeCats</span>
-      </router-link>
-      <div class="flex items-center gap-0.5">
+  <nav class="md:hidden fixed bottom-0 left-0 right-0 z-50 safe-bottom">
+    <div class="mx-2 mb-2 rounded-2xl overflow-hidden"
+      style="background: rgba(12, 20, 40, 0.88); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+        border: 1px solid rgba(255, 255, 255, 0.06);
+        box-shadow: 0 -4px 30px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255,255,255,0.04);">
+      <div class="flex justify-around items-center h-16 px-1">
         <router-link
           v-for="item in menuItems"
           :key="item.to"
           :to="item.to"
-          class="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium text-muted hover:text-secondary hover:bg-white/5 transition-all"
-          active-class="!text-accent !bg-accent/10"
+          class="flex flex-col items-center justify-center gap-0.5 px-3 py-1.5 rounded-xl text-muted hover:text-secondary transition-all relative"
+          active-class="!text-accent"
+        >
+          <IconBase :name="item.icon" :size="20" />
+          <span class="text-[10px] font-display font-medium leading-none">{{ item.label }}</span>
+          <!-- Active glow dot -->
+          <span class="absolute -bottom-0 left-1/2 -translate-x-1/2 w-1 h-1 bg-accent rounded-full opacity-0 transition-opacity shadow-glow-sm router-link-active:opacity-100" style="--glow-color: rgba(124, 58, 237, 0.6);" />
+        </router-link>
+
+        <button
+          @click="handleLogout"
+          class="flex flex-col items-center justify-center gap-0.5 px-3 py-1.5 rounded-xl text-muted hover:text-red-400 transition-all"
+          title="Logout"
+        >
+          <IconBase name="logout" :size="20" />
+          <span class="text-[10px] font-display font-medium leading-none">Logout</span>
+        </button>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Desktop: top nav bar -->
+  <nav class="hidden md:flex fixed top-0 left-0 right-0 z-50 h-14"
+    style="background: rgba(12, 20, 40, 0.88); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+      box-shadow: 0 4px 30px rgba(0, 0, 0, 0.3), inset 0 -1px 0 rgba(255,255,255,0.03);">
+    <div class="flex items-center justify-between w-full max-w-6xl mx-auto px-6">
+      <router-link to="/" class="flex items-center gap-2.5 group">
+        <div class="w-8 h-8 rounded-lg glass-panel flex items-center justify-center group-hover:shadow-glow-sm transition-shadow" style="--glow-color: rgba(124, 58, 237, 0.4);">
+          <span class="text-base">🐱</span>
+        </div>
+        <span class="text-lg font-display font-bold bg-gradient-to-r from-accent to-accent-soft bg-clip-text text-transparent">MemeCats</span>
+      </router-link>
+      <div class="flex items-center gap-1">
+        <router-link
+          v-for="item in menuItems"
+          :key="item.to"
+          :to="item.to"
+          class="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-sm font-display font-medium text-muted hover:text-secondary hover:bg-white/5 transition-all relative"
+          active-class="!text-accent !bg-accent/8"
         >
           <IconBase :name="item.icon" :size="18" />
           <span>{{ item.label }}</span>
         </router-link>
+        <div class="w-px h-6 bg-white/8 mx-1.5"></div>
         <button
           @click="handleLogout"
-          class="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium text-muted hover:text-red-400 hover:bg-white/5 transition-all ml-2"
+          class="flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-display font-medium text-muted hover:text-red-400 hover:bg-red-500/5 transition-all"
         >
           <IconBase name="logout" :size="18" />
           <span>Logout</span>
@@ -69,6 +80,7 @@ const menuItems = [
   { to: '/binder', label: 'Binder', icon: 'binder' },
   { to: '/gacha', label: 'Gacha', icon: 'gacha' },
   { to: '/market', label: 'Market', icon: 'market' },
+  { to: '/activities', label: 'Activities', icon: 'activities' },
 ];
 
 function handleLogout() {

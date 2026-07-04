@@ -21,10 +21,12 @@ export default async function handler(req, res) {
       return sendError(res, 403, 'FORBIDDEN', 'Secret tidak valid.');
     }
 
-    // Set cookie httpOnly untuk persistensi sesi admin di browser
-    res.setHeader('Set-Cookie', `admin_session=${ADMIN_SECRET}; HttpOnly; Path=/; Max-Age=43200; SameSite=Lax`);
+    const ttl = parsed.data.ttl || 43200;
 
-    return res.status(200).json({ message: 'Login admin berhasil.' });
+    // Set cookie httpOnly untuk persistensi sesi admin di browser
+    res.setHeader('Set-Cookie', `admin_session=${ADMIN_SECRET}; HttpOnly; Path=/; Max-Age=${ttl}; SameSite=Lax`);
+
+    return res.status(200).json({ message: 'Login admin berhasil.', ttl });
   } catch (err) {
     logError('/api/admin/login', err);
     return sendError(res, 500, 'INTERNAL_ERROR', 'Terjadi kesalahan, coba lagi nanti.');

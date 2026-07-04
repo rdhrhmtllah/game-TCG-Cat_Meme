@@ -13,8 +13,13 @@ dist/
 # Drizzle
 drizzle/
 
+# Claude Code local config
+.claude/
+
 # Editor/OS
 .DS_Store
 *.log
 .idea/
 .vscode/
+
+.vercel

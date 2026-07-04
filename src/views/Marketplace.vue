@@ -1,92 +1,115 @@
-﻿<template>
+<template>
   <div class="max-w-2xl mx-auto px-4 py-6">
-    <h1 class="text-xl font-bold mb-4">💎 Marketplace</h1>
+    <h1 class="text-xl font-display font-bold mb-5 flex items-center gap-2">
+      <span class="text-2xl">💎</span> Marketplace
+    </h1>
 
     <!-- Tabs -->
-    <div class="flex bg-surface-card rounded-xl p-1 gap-1 mb-4">
-      <button @click="activeTab = 'browse'" class="flex-1 py-2 rounded-lg text-sm font-medium transition-all"
-        :class="activeTab === 'browse' ? 'bg-accent text-white shadow-lg' : 'text-muted hover:text-secondary'">
+    <div class="flex glass-panel p-1 gap-1 mb-5">
+      <button @click="activeTab = 'browse'" class="flex-1 py-2.5 rounded-xl text-sm font-display font-semibold transition-all"
+        :class="activeTab === 'browse' ? 'bg-accent text-white shadow-lg shadow-accent/20' : 'text-muted hover:text-secondary'">
         Jelajahi
       </button>
-      <button @click="activeTab = 'mine'" class="flex-1 py-2 rounded-lg text-sm font-medium transition-all"
-        :class="activeTab === 'mine' ? 'bg-accent text-white shadow-lg' : 'text-muted hover:text-secondary'">
+      <button @click="activeTab = 'mine'" class="flex-1 py-2.5 rounded-xl text-sm font-display font-semibold transition-all"
+        :class="activeTab === 'mine' ? 'bg-accent text-white shadow-lg shadow-accent/20' : 'text-muted hover:text-secondary'">
         Listing Saya
       </button>
     </div>
 
     <!-- Browse -->
     <template v-if="activeTab === 'browse'">
-      <div class="flex gap-2 mb-3 overflow-x-auto pb-1">
+      <!-- Filter chips -->
+      <div class="flex gap-2 mb-4 touch-scroll-x pb-1">
         <button v-for="r in filters" :key="r.value" @click="activeRarity = r.value; page = 1"
-          class="px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-all border"
-          :class="(activeRarity === r.value) ? r.activeClass : 'border-white/10 text-muted hover:border-white/20 hover:text-secondary'">
+          class="px-4 py-2 rounded-full text-xs font-display font-semibold whitespace-nowrap transition-all border"
+          :class="(activeRarity === r.value) ? r.activeClass : 'border-white/8 text-muted hover:border-white/15 hover:text-secondary'">
           {{ r.label }}
         </button>
       </div>
 
+      <!-- Loading -->
       <div v-if="loading" class="grid grid-cols-1 gap-3">
         <LoadingSkeleton type="rect" :count="3" height="80px" />
       </div>
 
-      <div v-else-if="listings.length === 0" class="glass-panel p-8 text-center">
-        <p class="text-4xl mb-3">💎</p>
-        <p class="text-secondary font-medium">Belum ada listing.</p>
+      <!-- Empty state -->
+      <div v-else-if="listings.length === 0" class="glass-panel p-10 text-center animate-fade-in">
+        <div class="w-16 h-16 mx-auto mb-4 rounded-full glass-panel flex items-center justify-center">
+          <span class="text-3xl">💎</span>
+        </div>
+        <p class="text-primary font-display font-semibold mb-1">Belum ada listing.</p>
         <p class="text-muted text-sm">Jadi yang pertama jual kartu!</p>
       </div>
 
+      <!-- Listings -->
       <div v-else class="space-y-3">
-        <div v-for="listing in listings" :key="listing.id"
-          class="glass-panel p-3 flex items-center gap-4 card-hover">
-          <div class="w-16 h-22 rounded-lg overflow-hidden flex-shrink-0 card-frame"
+        <div v-for="(listing, idx) in listings" :key="listing.id"
+          class="glass-panel p-4 flex items-center gap-4 card-hover animate-fade-in"
+          :style="{ animationDelay: Math.min(idx * 0.05, 0.3) + 's' }">
+          <!-- Card thumbnail with rarity border -->
+          <div class="w-16 h-22 rounded-lg overflow-hidden flex-shrink-0 relative card-frame"
             :class="'card-frame-' + (listing.card?.rarity || 'Common').toLowerCase()">
-            <img v-if="listing.card?.imageUrl" :src="listing.card.imageUrl" class="w-full h-full object-cover" />
-            <span v-else class="w-full h-full flex items-center justify-center text-2xl">
+            <img v-if="listing.card?.imageUrl" :src="listing.card.imageUrl"
+              class="w-full h-full object-cover" loading="lazy" />
+            <span v-else class="w-full h-full flex items-center justify-center text-2xl bg-surface-card">
               {{ {Common:'🐱',Rare:'🐈',Epic:'✨',Legendary:'👑'}[listing.card?.rarity] || '🐱' }}
             </span>
+            <!-- Mini holo overlay -->
+            <div class="holo-overlay opacity-0 group-hover:opacity-100" />
           </div>
+
+          <!-- Info -->
           <div class="flex-1 min-w-0">
-            <p class="font-medium truncate">{{ listing.card?.name }}</p>
-            <span class="rarity-badge text-[10px]" :class="'rarity-' + (listing.card?.rarity || '').toLowerCase()">
+            <p class="font-display font-semibold truncate text-sm">{{ listing.card?.name }}</p>
+            <span class="rarity-badge text-[9px] mt-0.5" :class="'rarity-' + (listing.card?.rarity || '').toLowerCase()">
               {{ listing.card?.rarity }}
             </span>
-            <p class="text-sm text-muted mt-0.5">🪙 {{ listing.price.toLocaleString('id-ID') }}</p>
-            <p class="text-xs text-muted">Penjual: {{ listing.seller?.username }}</p>
+            <p class="text-sm font-display font-bold mt-1.5 flex items-center gap-1">
+              <span class="text-legendary">🪙</span> {{ listing.price.toLocaleString('id-ID') }}
+            </p>
+            <p class="text-[11px] text-muted">oleh {{ listing.seller?.username }}</p>
           </div>
+
+          <!-- Buy button -->
           <button @click="handleBuy(listing)" :disabled="playerStore.coins < listing.price || buyingId === listing.id"
-            class="btn-primary text-sm px-4">
+            class="btn-primary text-sm px-5 py-2.5 font-display">
             {{ buyingId === listing.id ? '...' : 'Beli' }}
           </button>
         </div>
 
         <!-- Pagination -->
-        <div class="flex justify-center gap-3 mt-4">
-          <button @click="page--" :disabled="page <= 1" class="btn-secondary text-sm px-3 py-1.5">←</button>
-          <span class="py-1.5 text-sm text-muted">Hal {{ page }}</span>
-          <button @click="page++" :disabled="listings.length < limit" class="btn-secondary text-sm px-3 py-1.5">→</button>
+        <div class="flex justify-center items-center gap-3 mt-5">
+          <button @click="page--" :disabled="page <= 1" class="btn-secondary text-sm px-3.5 py-2 font-display">←</button>
+          <span class="py-2 text-sm text-muted font-display">Hal {{ page }}</span>
+          <button @click="page++" :disabled="listings.length < limit" class="btn-secondary text-sm px-3.5 py-2 font-display">→</button>
         </div>
       </div>
     </template>
 
     <!-- My Listings -->
     <template v-if="activeTab === 'mine'">
-      <div v-if="myListings.length === 0" class="glass-panel p-8 text-center">
-        <p class="text-4xl mb-3">📋</p>
-        <p class="text-secondary font-medium">Belum ada listing.</p>
+      <div v-if="myListings.length === 0" class="glass-panel p-10 text-center animate-fade-in">
+        <div class="w-16 h-16 mx-auto mb-4 rounded-full glass-panel flex items-center justify-center">
+          <span class="text-3xl">📋</span>
+        </div>
+        <p class="text-primary font-display font-semibold mb-1">Belum ada listing.</p>
         <p class="text-muted text-sm">Jual kartu duplikat dari Binder!</p>
       </div>
 
       <div v-else class="space-y-3">
         <div v-for="listing in myListings" :key="listing.id"
-          class="glass-panel p-3 flex items-center gap-4">
+          class="glass-panel p-4 flex items-center gap-4">
           <div class="w-16 h-22 rounded-lg overflow-hidden flex-shrink-0 card-frame"
             :class="'card-frame-' + (listing.card?.rarity || 'Common').toLowerCase()">
             <img v-if="listing.card?.imageUrl" :src="listing.card.imageUrl" class="w-full h-full object-cover" />
           </div>
           <div class="flex-1 min-w-0">
-            <p class="font-medium truncate">{{ listing.card?.name }}</p>
-            <p class="text-sm text-muted">🪙 {{ listing.price.toLocaleString('id-ID') }}</p>
+            <p class="font-display font-semibold truncate text-sm">{{ listing.card?.name }}</p>
+            <p class="text-sm font-display font-bold mt-1 flex items-center gap-1">
+              <span class="text-legendary">🪙</span> {{ listing.price.toLocaleString('id-ID') }}
+            </p>
           </div>
-          <button @click="handleCancel(listing)" class="btn-danger text-sm px-4">Batal</button>
+          <button @click="handleCancel(listing)" class="btn-danger text-sm px-4 py-2 font-display">Batal</button>
         </div>
       </div>
     </template>
@@ -114,11 +137,11 @@ const buyingId = ref(null);
 const loading = ref(false);
 
 const filters = [
-  { value: null, label: 'Semua', activeClass: 'bg-white/10 text-white border-white/20' },
-  { value: 'Common', label: 'Common', activeClass: 'bg-common/30 text-common-light border-common/50' },
-  { value: 'Rare', label: 'Rare', activeClass: 'bg-rare/30 text-rare-light border-rare/50' },
-  { value: 'Epic', label: 'Epic', activeClass: 'bg-epic/30 text-epic-light border-epic/50' },
-  { value: 'Legendary', label: 'Legendary', activeClass: 'bg-legendary/30 text-legendary-light border-legendary/50' },
+  { value: null, label: 'Semua', activeClass: 'bg-white/10 text-white border-white/15 shadow-sm' },
+  { value: 'Common', label: 'Common', activeClass: 'bg-common/20 text-common-light border-common/30 shadow-sm shadow-common/10' },
+  { value: 'Rare', label: 'Rare', activeClass: 'bg-rare/20 text-rare-light border-rare/30 shadow-sm shadow-rare/10' },
+  { value: 'Epic', label: 'Epic', activeClass: 'bg-epic/20 text-epic-light border-epic/30 shadow-sm shadow-epic/10' },
+  { value: 'Legendary', label: 'Legendary', activeClass: 'bg-legendary/20 text-legendary-light border-legendary/30 shadow-sm shadow-legendary/10' },
 ];
 
 async function fetchListings() {
@@ -129,7 +152,7 @@ async function fetchListings() {
     const res = await fetch(`/api/market/listings?${params}`);
     const data = await res.json();
     if (res.ok) listings.value = data.listings;
-  } catch (e) { /* handled by skeleton */ }
+  } catch (e) { /* skeleton handles */ }
   finally { loading.value = false; }
 }
 
@@ -195,3 +218,4 @@ onMounted(async () => {
   await fetchMyListings();
 });
 </script>
+
