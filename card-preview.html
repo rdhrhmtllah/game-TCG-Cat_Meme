@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <title>Card Design Preview — semua rarity × foil</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Outfit:wght@400;500;600;700;800&family=Cinzel:wght@700;800;900&display=swap" rel="stylesheet" />
+  <style>
+    body { background: #070B1A; color: #fff; font-family: sans-serif; margin: 16px; }
+    h2 { font-size: 14px; margin: 18px 0 6px; }
+    .row { display: flex; gap: 12px; flex-wrap: wrap; }
+    .cell { text-align: center; }
+    .cell span { font-size: 10px; color: #94A3B8; }
+    canvas { width: 240px; height: 336px; border-radius: 10px; display: block; margin-bottom: 4px; }
+  </style>
+</head>
+<body>
+  <h1 style="font-size:16px">MemeCats — Card Frame Preview (dev tool)</h1>
+  <div id="grid"></div>
+  <script type="module">
+    import { drawCardCanvas } from '/src/utils/cardRenderer.js';
+    import { ensureFontsLoaded } from '/src/utils/fonts.js';
+
+    const RARITIES = ['Common', 'Rare', 'Epic', 'Legendary'];
+    const FOILS = ['Standard', 'Holo', 'Reverse Holo', 'Full Art ex', 'Secret Gold', 'Special Illustration'];
+    const ELEMENTS = { Common: 'Normal', Rare: 'Water', Epic: 'Cosmic', Legendary: 'Fire' };
+
+    function loadImg(url) {
+      return new Promise((res) => {
+        const img = new Image();
+        img.onload = () => res(img);
+        img.onerror = () => res(null);
+        img.src = url;
+      });
+    }
+
+    await ensureFontsLoaded();
+    const grid = document.getElementById('grid');
+    for (const rarity of RARITIES) {
+      const h2 = document.createElement('h2');
+      h2.textContent = rarity;
+      grid.appendChild(h2);
+      const row = document.createElement('div');
+      row.className = 'row';
+      grid.appendChild(row);
+      const art = await loadImg(`/placeholders/${rarity.toLowerCase()}-placeholder.svg`);
+      for (const foil of FOILS) {
+        const canvas = drawCardCanvas({
+          name: rarity === 'Legendary' ? 'Nyan Dragon Rex' : 'Doge Supremacy',
+          description: 'Kucing meme legendaris dengan tatapan yang menggetarkan seluruh timeline.',
+          rarity, foilStyle: foil,
+          hypeScore: { Common: 50, Rare: 200, Epic: 400, Legendary: 800 }[rarity],
+          likesPerSec: 2.5,
+          element: ELEMENTS[rarity],
+          attackName1: 'Cosmic Claw', attackName2: 'Meme Burst',
+          weakness: '💧 ×2', resistance: '🔥 -20', illustrator: 'Preview Bot',
+        }, art);
+        const cell = document.createElement('div');
+        cell.className = 'cell';
+        cell.appendChild(canvas);
+        const label = document.createElement('span');
+        label.textContent = foil;
+        cell.appendChild(label);
+        row.appendChild(cell);
+      }
+    }
+    document.title = 'PREVIEW-READY';
+  </script>
+</body>
+</html>

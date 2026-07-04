@@ -77,6 +77,7 @@ import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { drawCardCanvas } from '@/utils/cardRenderer.js';
 import { getQualityConfig } from '@/utils/quality.js';
 import { createEnvironmentTexture } from '@/utils/threeEnv.js';
+import { ensureFontsLoaded } from '@/utils/fonts.js';
 
 const quality = getQualityConfig();
 
@@ -1075,11 +1076,14 @@ function loadAndBuildCard() {
   const placeholderUrl = `/placeholders/${props.rarity.toLowerCase()}-placeholder.svg`;
   const texUrl = props.imageUrl || placeholderUrl;
 
+  // Font WAJIB siap sebelum canvas digambar — kalau tidak, teks kartu
+  // ter-render pakai font sistem dan ke-cache permanen di texture
+  const fontsReady = ensureFontsLoaded();
   loader.load(
     texUrl,
-    (tex) => { if (requestId === buildRequestId) buildCardFace(tex.image); },
+    (tex) => { fontsReady.then(() => { if (requestId === buildRequestId) buildCardFace(tex.image); }); },
     undefined,
-    () => { if (requestId === buildRequestId) buildCardFace(null); }
+    () => { fontsReady.then(() => { if (requestId === buildRequestId) buildCardFace(null); }); }
   );
 }
 

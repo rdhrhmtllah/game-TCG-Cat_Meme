@@ -1,13 +1,36 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 250 350" width="250" height="350">
   <defs>
-    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0%" stop-color="#1E3A5F"/>
-      <stop offset="100%" stop-color="#1E40AF"/>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#0C2340"/>
+      <stop offset="55%" stop-color="#0A1A30"/>
+      <stop offset="100%" stop-color="#050D1C"/>
     </linearGradient>
+    <radialGradient id="glow" cx="0.5" cy="0.40" r="0.62">
+      <stop offset="0%" stop-color="#06B6D4" stop-opacity="0.45"/>
+      <stop offset="100%" stop-color="#06B6D4" stop-opacity="0"/>
+    </radialGradient>
   </defs>
-  <rect width="250" height="350" rx="12" fill="url(#bg)"/>
-  <rect x="8" y="8" width="234" height="334" rx="8" fill="none" stroke="#60A5FA" stroke-width="2"/>
-  <text x="125" y="150" text-anchor="middle" font-size="64">🐈</text>
-  <text x="125" y="200" text-anchor="middle" font-size="18" fill="#60A5FA" font-family="sans-serif" font-weight="bold">RARE</text>
-  <text x="125" y="230" text-anchor="middle" font-size="12" fill="#93C5FD" font-family="sans-serif">MemeCats</text>
+  <rect width="250" height="350" fill="url(#bg)"/>
+  <rect width="250" height="350" fill="url(#glow)"/>
+  <g fill="none" stroke="#38BDF8" stroke-opacity="0.28">
+    <circle cx="130" cy="150" r="60" stroke-width="1.5"/>
+    <circle cx="130" cy="150" r="88" stroke-width="1"/>
+    <circle cx="130" cy="150" r="116" stroke-width="0.7"/>
+  </g>
+  <g stroke="#67E8F9" stroke-width="2" fill="none" stroke-opacity="0.65" stroke-linecap="round">
+    <path d="M34 44 L52 78 L42 80 L58 112"/>
+    <path d="M216 240 L200 270 L210 272 L196 300"/>
+  </g>
+  <ellipse cx="130" cy="296" rx="72" ry="12" fill="#020617" opacity="0.6"/>
+  <g fill="#06121F">
+    <path d="M108 92 L98 60 L126 80 Z"/>
+    <path d="M152 92 L162 60 L134 80 Z"/>
+    <circle cx="130" cy="106" r="27"/>
+    <path d="M130 126 C98 138 86 178 84 228 C83 262 96 286 130 288 C164 286 177 262 176 228 C174 178 162 138 130 126 Z"/>
+    <path d="M172 274 C208 266 218 232 206 202 C201 189 190 183 181 188" fill="none" stroke="#06121F" stroke-width="14" stroke-linecap="round"/>
+  </g>
+  <path d="M130 126 C98 138 86 178 84 228" fill="none" stroke="#67E8F9" stroke-opacity="0.45" stroke-width="2"/>
+  <path d="M172 274 C208 266 218 232 206 202" fill="none" stroke="#38BDF8" stroke-opacity="0.35" stroke-width="2"/>
+  <ellipse cx="120" cy="104" rx="5" ry="3" fill="#67E8F9"/>
+  <ellipse cx="140" cy="104" rx="5" ry="3" fill="#67E8F9"/>
 </svg>

@@ -1,7 +1,17 @@
 /**
- * Pokémon TCG Dynamic Card Frame Generator
+ * MemeCats TCG Dynamic Card Frame Generator — "Hybrid Fantasy-Luxe"
  * Generates high-fidelity card textures on HTML5 Canvas.
+ *
+ * Bahasa desain bertingkat per rarity:
+ *   Common    → "Playful Clean"  (bersih, bevel halus, Outfit)
+ *   Rare      → "Neon Circuit"   (identitas cyan, dipoles bevel)
+ *   Epic      → "Arcane Ornate"  (Cinzel, gem faceted, constellation)
+ *   Legendary → "Royal Artifact" (Cinzel 900, emas beveled, parchment)
+ *
+ * Sistem koordinat logis SELALU 600×840 — resolusi output diskalakan
+ * via ctx.scale() sesuai quality tier (lihat drawCardCanvas).
  */
+import { getQualityConfig } from './quality.js';
 
 // Helper to draw a rounded rectangle path
 function drawRoundRectPath(ctx, x, y, w, h, r) {
@@ -445,6 +455,366 @@ function createSeededRandom(seed) {
     s = (s * 9301 + 49297) % 233280;
     return s / 233280;
   };
+}
+
+// ============================================================
+// FANTASY-LUXE PREMIUM HELPERS
+// Teknik bersama untuk bevel metalik, tekstur, seam, dan footer
+// ============================================================
+
+// Tile noise offscreen (di-cache) — jauh lebih murah daripada per-pixel
+// ImageData di resolusi penuh; dipakai sebagai pattern repeat
+const noiseTileCache = new Map();
+function getNoiseTile(seed, light) {
+  const key = `${seed}-${light}`;
+  if (noiseTileCache.has(key)) return noiseTileCache.get(key);
+  const tile = document.createElement('canvas');
+  tile.width = tile.height = 96;
+  const tctx = tile.getContext('2d');
+  const rand = createSeededRandom(seed);
+  const v = light ? 255 : 0;
+  for (let i = 0; i < 1300; i++) {
+    tctx.fillStyle = `rgba(${v},${v},${v},${(0.02 + rand() * 0.05).toFixed(3)})`;
+    tctx.fillRect(Math.floor(rand() * 96), Math.floor(rand() * 96), 1, 1);
+  }
+  noiseTileCache.set(key, tile);
+  return tile;
+}
+
+// Grain halus dua arah (gelap+terang) — bikin permukaan terasa "kertas"
+function applyGrain(ctx, x, y, w, h, opacity = 0.55) {
+  ctx.save();
+  ctx.globalAlpha = opacity;
+  ctx.fillStyle = ctx.createPattern(getNoiseTile(11, false), 'repeat');
+  ctx.fillRect(x, y, w, h);
+  ctx.fillStyle = ctx.createPattern(getNoiseTile(23, true), 'repeat');
+  ctx.fillRect(x, y, w, h);
+  ctx.restore();
+}
+
+// Inner shadow 4 sisi via gradient strip — untuk edge darkening & seam art
+function drawInnerShadowRect(ctx, x, y, w, h, depth, color) {
+  ctx.save();
+  const mk = (x0, y0, x1, y1) => {
+    const g = ctx.createLinearGradient(x0, y0, x1, y1);
+    g.addColorStop(0, color);
+    g.addColorStop(1, 'rgba(0,0,0,0)');
+    return g;
+  };
+  ctx.fillStyle = mk(x, y, x, y + depth);         ctx.fillRect(x, y, w, depth);
+  ctx.fillStyle = mk(x, y + h, x, y + h - depth); ctx.fillRect(x, y + h - depth, w, depth);
+  ctx.fillStyle = mk(x, y, x + depth, y);         ctx.fillRect(x, y, depth, h);
+  ctx.fillStyle = mk(x + w, y, x + w - depth, y); ctx.fillRect(x + w - depth, y, depth, h);
+  ctx.restore();
+}
+
+// Color grade tipis bernuansa element di atas artwork — menyatukan art
+// dengan frame (art upload-an admin warnanya acak)
+function applyElementGrade(ctx, x, y, w, h, element, alpha = 0.10) {
+  ctx.save();
+  ctx.globalCompositeOperation = 'overlay';
+  ctx.globalAlpha = alpha;
+  ctx.fillStyle = getElementColor(element);
+  ctx.fillRect(x, y, w, h);
+  ctx.restore();
+}
+
+// Finishing art window: grade element + feathered seam (inner shadow)
+// supaya pertemuan art ↔ frame tidak berupa garis keras
+function finishArtworkWindow(ctx, x, y, w, h, element) {
+  applyElementGrade(ctx, x, y, w, h, element, 0.09);
+  drawInnerShadowRect(ctx, x, y, w, h, 13, 'rgba(2,6,16,0.40)');
+}
+
+// Border metalik ber-bevel: chamfer gelap luar → body gradient dengan
+// specular band → garis terang dalam → garis gelap terdalam.
+// stops: array [posisi, warna] untuk body metal (banded = brushed metal)
+function drawBeveledBorder(ctx, w, h, opts) {
+  const {
+    inset = 8, width = 14, radius = 20, stops,
+    bright = 'rgba(255,255,255,0.75)',
+    chamfer = 'rgba(0,0,0,0.55)',
+    innerDark = 'rgba(0,0,0,0.45)',
+    glow = null,
+  } = opts;
+  ctx.save();
+  if (glow) { ctx.shadowColor = glow; ctx.shadowBlur = 14; }
+  const g = ctx.createLinearGradient(0, 0, 0, h);
+  stops.forEach(([p, c]) => g.addColorStop(p, c));
+  ctx.strokeStyle = g;
+  ctx.lineWidth = width;
+  drawRoundRectPath(ctx, inset, inset, w - inset * 2, h - inset * 2, radius);
+  ctx.stroke();
+  ctx.shadowBlur = 0;
+
+  const half = width / 2;
+  // Chamfer gelap tepi luar
+  const xo = inset - half + 0.75;
+  ctx.strokeStyle = chamfer; ctx.lineWidth = 1.5;
+  drawRoundRectPath(ctx, xo, xo, w - xo * 2, h - xo * 2, radius + half);
+  ctx.stroke();
+  // Garis specular terang (sisi dalam border, kena "cahaya")
+  const xb = inset + half - 1.2;
+  ctx.strokeStyle = bright; ctx.lineWidth = 1.2;
+  drawRoundRectPath(ctx, xb, xb, w - xb * 2, h - xb * 2, Math.max(4, radius - half + 1));
+  ctx.stroke();
+  // Garis gelap terdalam (bayangan jatuh ke isi kartu)
+  const xd = inset + half + 0.8;
+  ctx.strokeStyle = innerDark; ctx.lineWidth = 1;
+  drawRoundRectPath(ctx, xd, xd, w - xd * 2, h - xd * 2, Math.max(3, radius - half));
+  ctx.stroke();
+  ctx.restore();
+}
+
+// Palet metal siap pakai (banded → kesan brushed/polished metal)
+const METAL_STOPS = {
+  silver: [[0,'#8E979F'],[0.08,'#F4F6F8'],[0.25,'#B7BEC7'],[0.5,'#E8ECF0'],[0.75,'#9AA2AB'],[0.92,'#DEE3E8'],[1,'#6E767E']],
+  gold:   [[0,'#8A5A0B'],[0.08,'#FDE9A8'],[0.22,'#E8A81C'],[0.42,'#FFF3C4'],[0.55,'#F5C542'],[0.72,'#B87E0E'],[0.88,'#FDE9A8'],[1,'#7A4E08']],
+  cyan:   [[0,'#0C4A6E'],[0.1,'#BAE6FD'],[0.3,'#0EA5E9'],[0.5,'#E0F7FF'],[0.7,'#0284C7'],[0.9,'#7DD3FC'],[1,'#075985']],
+  purple: [[0,'#581C87'],[0.1,'#E9D5FF'],[0.3,'#A855F7'],[0.5,'#F0E1FF'],[0.7,'#9333EA'],[0.9,'#D8B4FE'],[1,'#4C1D95']],
+};
+
+// Path bintang N-titik (untuk rarity pip)
+function starPath(ctx, cx, cy, spikes, outerR, innerR) {
+  ctx.beginPath();
+  for (let i = 0; i < spikes * 2; i++) {
+    const r = i % 2 === 0 ? outerR : innerR;
+    const a = (Math.PI / spikes) * i - Math.PI / 2;
+    const px = cx + Math.cos(a) * r;
+    const py = cy + Math.sin(a) * r;
+    i === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
+  }
+  ctx.closePath();
+}
+
+// Rarity pip ala TCG fisik: ● Common, ◆ Rare, ★ Epic, ★★ Legendary
+function drawRarityPip(ctx, cx, cy, rarity) {
+  ctx.save();
+  const r = (rarity || 'Common').toLowerCase();
+  if (r === 'legendary') {
+    ctx.shadowColor = '#F59E0B'; ctx.shadowBlur = 4;
+    const g = ctx.createLinearGradient(cx, cy - 5, cx, cy + 5);
+    g.addColorStop(0, '#FEF9C3'); g.addColorStop(1, '#D97706');
+    ctx.fillStyle = g;
+    starPath(ctx, cx - 5, cy, 5, 5, 2.2); ctx.fill();
+    starPath(ctx, cx + 5, cy, 5, 5, 2.2); ctx.fill();
+  } else if (r === 'epic') {
+    ctx.shadowColor = '#A855F7'; ctx.shadowBlur = 4;
+    const g = ctx.createLinearGradient(cx, cy - 5, cx, cy + 5);
+    g.addColorStop(0, '#E9D5FF'); g.addColorStop(1, '#7C3AED');
+    ctx.fillStyle = g;
+    starPath(ctx, cx, cy, 5, 5.5, 2.4); ctx.fill();
+  } else if (r === 'rare') {
+    const g = ctx.createLinearGradient(cx, cy - 5, cx, cy + 5);
+    g.addColorStop(0, '#BAE6FD'); g.addColorStop(1, '#0284C7');
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.moveTo(cx, cy - 5.5); ctx.lineTo(cx + 4.5, cy); ctx.lineTo(cx, cy + 5.5); ctx.lineTo(cx - 4.5, cy);
+    ctx.closePath(); ctx.fill();
+  } else {
+    ctx.fillStyle = '#94A3B8';
+    ctx.beginPath(); ctx.arc(cx, cy, 4, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = 'rgba(255,255,255,0.55)';
+    ctx.beginPath(); ctx.arc(cx - 1.2, cy - 1.2, 1.4, 0, Math.PI * 2); ctx.fill();
+  }
+  ctx.restore();
+}
+
+// Ekstrak multiplier dari string weakness lama ("💧 ×2" → "×2")
+function extractMultiplier(str, fallback = '×2') {
+  if (!str) return fallback;
+  const m = String(str).match(/[×xX]\s?(\d+(?:\.\d+)?)/);
+  return m ? `×${m[1]}` : fallback;
+}
+
+// Ekstrak angka resistance ("🔥 -20" → "−20"), '—' bila kosong
+function extractResistance(str) {
+  if (!str || String(str).trim() === '—') return null;
+  const m = String(str).match(/-?\d+/);
+  return m ? `−${Math.abs(parseInt(m[0], 10))}` : null;
+}
+
+// Footer premium TANPA emoji: pip element vector untuk weakness/resistance,
+// paw vector untuk retreat, rarity pip + wordmark di baris bawah
+function drawPremiumFooter(ctx, w, h, footerY, cardData, opts) {
+  const { rarity = 'Common', labelColor, valueColor, metaColor } = opts;
+  const retreatCount = (rarity === 'Epic' || rarity === 'Legendary') ? 2 : 1;
+
+  ctx.save();
+  ctx.textBaseline = 'alphabetic';
+
+  // — Weakness —
+  let x = 34;
+  ctx.fillStyle = labelColor; ctx.font = '700 8px "Inter",sans-serif'; ctx.textAlign = 'left';
+  ctx.fillText('WEAKNESS', x, footerY);
+  x += ctx.measureText('WEAKNESS').width + 12;
+  const weakEl = parseElementFromEmojiOrText(cardData.weakness);
+  drawElementSymbol(ctx, x, footerY - 3, 7, weakEl);
+  x += 12;
+  ctx.fillStyle = valueColor; ctx.font = '700 10px "Inter",sans-serif';
+  ctx.fillText(extractMultiplier(cardData.weakness), x, footerY);
+
+  // — Resistance —
+  x = 218;
+  ctx.fillStyle = labelColor; ctx.font = '700 8px "Inter",sans-serif';
+  ctx.fillText('RESISTANCE', x, footerY);
+  x += ctx.measureText('RESISTANCE').width + 12;
+  const resVal = extractResistance(cardData.resistance);
+  if (resVal) {
+    const resEl = parseElementFromEmojiOrText(cardData.resistance);
+    drawElementSymbol(ctx, x, footerY - 3, 7, resEl);
+    x += 12;
+    ctx.fillStyle = valueColor; ctx.font = '700 10px "Inter",sans-serif';
+    ctx.fillText(resVal, x, footerY);
+  } else {
+    ctx.fillStyle = valueColor; ctx.font = '700 10px "Inter",sans-serif';
+    ctx.fillText('—', x, footerY);
+  }
+
+  // — Retreat (paw vector, bukan emoji) —
+  ctx.fillStyle = labelColor; ctx.font = '700 8px "Inter",sans-serif'; ctx.textAlign = 'right';
+  const pawSpace = retreatCount * 16 + 6;
+  ctx.fillText('RETREAT', w - 34 - pawSpace, footerY);
+  for (let i = 0; i < retreatCount; i++) {
+    drawPawIcon(ctx, w - 34 - i * 16 - 6, footerY - 3, 6, valueColor, null);
+  }
+
+  // — Baris meta: illustrator + rarity pip + wordmark —
+  ctx.fillStyle = metaColor; ctx.font = '600 8px "Inter",sans-serif'; ctx.textAlign = 'left';
+  ctx.fillText(`Illus. ${cardData.illustrator || 'AI Artist'}`, 30, h - 13);
+  ctx.textAlign = 'right';
+  ctx.font = '800 8px "Outfit",sans-serif';
+  const wordmark = 'MEMECATS  ©2026';
+  ctx.fillText(wordmark, w - 30, h - 13);
+  drawRarityPip(ctx, w - 38 - ctx.measureText(wordmark).width, h - 16, rarity);
+  ctx.restore();
+}
+
+// Font-fit: kecilkan ukuran sampai muat maxW (nama kartu bisa panjang)
+function fitFont(ctx, text, weight, sizePx, family, maxW) {
+  let size = sizePx;
+  while (size > 13) {
+    ctx.font = `${weight} ${size}px ${family}`;
+    if (ctx.measureText(text).width <= maxW) break;
+    size -= 1;
+  }
+  return `${weight} ${size}px ${family}`;
+}
+
+// Panel parchment (Legendary "Royal Artifact"): kertas tua bertekstur
+// dengan bercak, edge darkening, dan trim emas ganda
+function drawParchmentPanel(ctx, x, y, w, h, radius) {
+  ctx.save();
+  drawRoundRectPath(ctx, x, y, w, h, radius);
+  ctx.clip();
+  const g = ctx.createLinearGradient(0, y, 0, y + h);
+  g.addColorStop(0, '#F2E2BD');
+  g.addColorStop(0.5, '#E9D4A4');
+  g.addColorStop(1, '#DBC08A');
+  ctx.fillStyle = g;
+  ctx.fillRect(x, y, w, h);
+  applyGrain(ctx, x, y, w, h, 0.7);
+  // Bercak penuaan
+  const rand = createSeededRandom(555);
+  ctx.globalCompositeOperation = 'multiply';
+  for (let i = 0; i < 9; i++) {
+    const bx = x + rand() * w, by = y + rand() * h, br = 24 + rand() * 60;
+    const bg = ctx.createRadialGradient(bx, by, 0, bx, by, br);
+    bg.addColorStop(0, 'rgba(160,124,54,0.10)');
+    bg.addColorStop(1, 'rgba(160,124,54,0)');
+    ctx.fillStyle = bg;
+    ctx.beginPath(); ctx.arc(bx, by, br, 0, Math.PI * 2); ctx.fill();
+  }
+  ctx.globalCompositeOperation = 'source-over';
+  drawInnerShadowRect(ctx, x, y, w, h, 16, 'rgba(101,67,14,0.30)');
+  ctx.restore();
+  // Trim emas ganda
+  ctx.save();
+  ctx.strokeStyle = '#B87E0E'; ctx.lineWidth = 2.5;
+  drawRoundRectPath(ctx, x, y, w, h, radius); ctx.stroke();
+  ctx.strokeStyle = 'rgba(254,240,138,0.8)'; ctx.lineWidth = 1;
+  drawRoundRectPath(ctx, x + 4, y + 4, w - 8, h - 8, Math.max(3, radius - 3)); ctx.stroke();
+  ctx.restore();
+}
+
+// Filigree royal berlapis: understroke gelap (kedalaman ukiran) → body
+// gradient emas → highlight putih tipis → titik emas bercahaya
+function drawRoyalFiligree(ctx, cx, cy, size, dx, dy) {
+  ctx.save();
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  const path = () => {
+    ctx.beginPath();
+    // Batang utama melengkung dari dua arah sudut
+    ctx.moveTo(cx, cy + dy * size);
+    ctx.quadraticCurveTo(cx + dx * size * 0.06, cy + dy * size * 0.34, cx + dx * size, cy);
+    // Spiral curl di lengkungan
+    ctx.moveTo(cx + dx * size * 0.56, cy + dy * size * 0.15);
+    ctx.quadraticCurveTo(cx + dx * size * 0.80, cy + dy * size * 0.28, cx + dx * size * 0.64, cy + dy * size * 0.43);
+    ctx.quadraticCurveTo(cx + dx * size * 0.50, cy + dy * size * 0.52, cx + dx * size * 0.46, cy + dy * size * 0.36);
+    // Daun kecil ke arah dalam
+    ctx.moveTo(cx + dx * size * 0.26, cy + dy * size * 0.30);
+    ctx.quadraticCurveTo(cx + dx * size * 0.46, cy + dy * size * 0.36, cx + dx * size * 0.40, cy + dy * size * 0.56);
+  };
+  ctx.strokeStyle = 'rgba(61,38,6,0.9)'; ctx.lineWidth = 4; path(); ctx.stroke();
+  const g = ctx.createLinearGradient(cx, cy, cx + dx * size, cy + dy * size);
+  g.addColorStop(0, '#FDE68A'); g.addColorStop(0.5, '#F59E0B'); g.addColorStop(1, '#B45309');
+  ctx.strokeStyle = g; ctx.lineWidth = 2.2; path(); ctx.stroke();
+  ctx.strokeStyle = 'rgba(255,251,235,0.85)'; ctx.lineWidth = 0.8; path(); ctx.stroke();
+  ctx.fillStyle = '#FEF08A'; ctx.shadowColor = '#F59E0B'; ctx.shadowBlur = 5;
+  [[0.64, 0.43], [0.40, 0.56], [0.97, 0.03]].forEach(([fx, fy]) => {
+    ctx.beginPath();
+    ctx.arc(cx + dx * size * fx, cy + dy * size * fy, 2.2, 0, Math.PI * 2);
+    ctx.fill();
+  });
+  ctx.restore();
+}
+
+// Gem faceted sungguhan: dudukan logam gelap → 8 facet segitiga dengan
+// shade selang-seling → table (facet datar) terang → glint
+function drawFacetedGem(ctx, cx, cy, size, palette) {
+  const { light, mid, dark, rim, glow } = palette;
+  ctx.save();
+  ctx.shadowColor = glow; ctx.shadowBlur = 12;
+  // Dudukan logam (octagon luar)
+  const outer = [];
+  for (let i = 0; i < 8; i++) {
+    const a = (Math.PI / 4) * i - Math.PI / 8;
+    outer.push([cx + size * Math.cos(a), cy + size * Math.sin(a)]);
+  }
+  ctx.beginPath();
+  outer.forEach(([px, py], i) => i === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py));
+  ctx.closePath();
+  ctx.fillStyle = rim; ctx.fill();
+  ctx.shadowBlur = 0;
+  // Facet segitiga (tepi → pusat), shade selang-seling meniru refraksi
+  const inner = outer.map(([px, py]) => [cx + (px - cx) * 0.85, cy + (py - cy) * 0.85]);
+  const shades = [mid, dark, light, mid, dark, mid, light, dark];
+  for (let i = 0; i < 8; i++) {
+    const [x1, y1] = inner[i];
+    const [x2, y2] = inner[(i + 1) % 8];
+    ctx.beginPath();
+    ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.lineTo(cx, cy);
+    ctx.closePath();
+    ctx.fillStyle = shades[i]; ctx.fill();
+  }
+  // Table facet datar di tengah
+  ctx.beginPath();
+  for (let i = 0; i < 8; i++) {
+    const a = (Math.PI / 4) * i - Math.PI / 8;
+    const px = cx + size * 0.38 * Math.cos(a);
+    const py = cy + size * 0.38 * Math.sin(a);
+    i === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
+  }
+  ctx.closePath();
+  const tg = ctx.createLinearGradient(cx - size * 0.4, cy - size * 0.4, cx + size * 0.4, cy + size * 0.4);
+  tg.addColorStop(0, light); tg.addColorStop(1, mid);
+  ctx.fillStyle = tg; ctx.fill();
+  // Glint
+  ctx.beginPath();
+  ctx.arc(cx - size * 0.22, cy - size * 0.26, size * 0.16, 0, Math.PI * 2);
+  ctx.fillStyle = 'rgba(255,255,255,0.75)'; ctx.fill();
+  ctx.restore();
 }
 
 // Common Holo: silver glitter around artwork window
@@ -1265,6 +1635,7 @@ function drawCommon(ctx, w, h, cardData, artworkImage, foilStyle = 'Standard') {
     ctx.save(); ctx.globalAlpha = 0.08;
     ctx.fillStyle = el; ctx.fillRect(0, 0, w, h);
     ctx.restore();
+    applyGrain(ctx, 0, 0, w, h, 0.4);
   }
 
   // ── 2. BORDER ──────────────────────────────────────────────
@@ -1285,13 +1656,14 @@ function drawCommon(ctx, w, h, cardData, artworkImage, foilStyle = 'Standard') {
     ctx.strokeStyle = '#FEF08A'; ctx.lineWidth = 1;
     drawRoundRectPath(ctx, 4, 4, w - 8, h - 8, 22); ctx.stroke();
   } else {
-    // Double steel border
-    const sg = ctx.createLinearGradient(0,0,w,h);
-    sg.addColorStop(0,'#9CA3AF'); sg.addColorStop(0.5,'#E5E7EB'); sg.addColorStop(1,'#6B7280');
-    ctx.strokeStyle = sg; ctx.lineWidth = 14;
-    drawRoundRectPath(ctx, 7, 7, w - 14, h - 14, 20); ctx.stroke();
-    ctx.strokeStyle = '#1F2937'; ctx.lineWidth = 3;
-    drawRoundRectPath(ctx, 16, 16, w - 32, h - 32, 14); ctx.stroke();
+    // Beveled brushed-steel border (chamfer + specular band)
+    drawBeveledBorder(ctx, w, h, {
+      inset: 8, width: 14, radius: 20,
+      stops: METAL_STOPS.silver,
+      bright: 'rgba(255,255,255,0.80)',
+      chamfer: 'rgba(9,13,22,0.70)',
+      innerDark: 'rgba(17,24,39,0.55)',
+    });
   }
   ctx.restore();
 
@@ -1381,6 +1753,8 @@ function drawCommon(ctx, w, h, cardData, artworkImage, foilStyle = 'Standard') {
     ctx.restore();
     if (artworkImage) drawCoverImage(ctx, artworkImage, artX, artY, artW, artH, cardData._imgTransform);
     else { ctx.fillStyle = '#1E293B'; ctx.fillRect(artX, artY, artW, artH); }
+    // Feathered seam + element grade — art menyatu dengan frame
+    finishArtworkWindow(ctx, artX, artY, artW, artH, cardData.element);
   }
 
   // ── 5. SPECIES BAR ─────────────────────────────────────────
@@ -1475,14 +1849,12 @@ function drawCommon(ctx, w, h, cardData, artworkImage, foilStyle = 'Standard') {
   // ── 7. FOOTER ──────────────────────────────────────────────
   const footerY = isBleed ? h - 44 : 800;
   const ftColor = (isBleed && foilStyle !== 'Special Illustration') ? '#6B7280' : '#9CA3AF';
-  ctx.fillStyle = ftColor; ctx.font = 'bold 9px "Inter",sans-serif';
-  ctx.textAlign = 'left';
-  ctx.fillText(`weakness: ${cardData.weakness || '💧 ×2'}`, 34, footerY);
-  ctx.fillText(`resistance: ${cardData.resistance || '—'}`, 148, footerY);
-  ctx.textAlign = 'right'; ctx.fillText('retreat: 🐾', w - 34, footerY);
-  ctx.fillStyle = ftColor; ctx.font = '600 8px "Inter",sans-serif';
-  ctx.textAlign = 'left'; ctx.fillText(`Illus. ${cardData.illustrator || 'AI Artist'}`, 30, h - 13);
-  ctx.textAlign = 'right'; ctx.fillText(`MemeCats • ${cardData.hypeScore || 50} Hype • ©2026`, w - 30, h - 13);
+  drawPremiumFooter(ctx, w, h, footerY, cardData, {
+    rarity: 'Common',
+    labelColor: ftColor,
+    valueColor: (isBleed && foilStyle !== 'Special Illustration') ? '#9CA3AF' : '#D1D5DB',
+    metaColor: ftColor,
+  });
 }
 
 // ============================================================
@@ -1509,6 +1881,7 @@ function drawRare(ctx, w, h, cardData, artworkImage, foilStyle = 'Standard') {
     glow.addColorStop(0, 'rgba(6,182,212,0.16)');
     glow.addColorStop(1, 'transparent');
     ctx.fillStyle = glow; ctx.fillRect(0, 0, w, h);
+    applyGrain(ctx, 0, 0, w, h, 0.35);
   }
 
   // ── 2. BORDER (3-layer neon) ───────────────────────────────
@@ -1523,16 +1896,16 @@ function drawRare(ctx, w, h, cardData, artworkImage, foilStyle = 'Standard') {
     ctx.strokeStyle = gg; ctx.lineWidth = 16;
     drawRoundRectPath(ctx, 8, 8, w-16, h-16, 22); ctx.stroke();
   } else {
-    // Outer cyan glow border
-    ctx.shadowColor = '#06B6D4'; ctx.shadowBlur = 14;
-    const bg = ctx.createLinearGradient(0,0,w,h);
-    bg.addColorStop(0,'#38BDF8'); bg.addColorStop(0.5,'#0EA5E9'); bg.addColorStop(1,'#0369A1');
-    ctx.strokeStyle = bg; ctx.lineWidth = 14;
-    drawRoundRectPath(ctx, 8, 8, w-16, h-16, 22); ctx.stroke();
-    // Inner bright thin line
-    ctx.shadowBlur = 6; ctx.shadowColor = '#67E8F9';
-    ctx.strokeStyle = 'rgba(207,250,254,0.85)'; ctx.lineWidth = 1.5;
-    drawRoundRectPath(ctx, 17, 17, w-34, h-34, 15); ctx.stroke();
+    // Beveled neon-cyan border: identitas circuit dipertahankan,
+    // sekarang dengan chamfer + specular band metalik
+    drawBeveledBorder(ctx, w, h, {
+      inset: 8, width: 14, radius: 22,
+      stops: METAL_STOPS.cyan,
+      bright: 'rgba(207,250,254,0.90)',
+      chamfer: 'rgba(4,20,38,0.75)',
+      innerDark: 'rgba(7,32,51,0.60)',
+      glow: '#06B6D4',
+    });
   }
   ctx.restore();
 
@@ -1632,6 +2005,8 @@ function drawRare(ctx, w, h, cardData, artworkImage, foilStyle = 'Standard') {
     }
     if (artworkImage) drawCoverImage(ctx, artworkImage, artX, artY, artW, artH, cardData._imgTransform);
     else { ctx.fillStyle = '#0A1628'; ctx.fillRect(artX, artY, artW, artH); }
+    // Feathered seam + element grade
+    finishArtworkWindow(ctx, artX, artY, artW, artH, cardData.element);
     // Neon L-bracket corners on artwork
     ctx.save();
     const bLen = 20;
@@ -1724,13 +2099,12 @@ function drawRare(ctx, w, h, cardData, artworkImage, foilStyle = 'Standard') {
 
   // ── 7. FOOTER ──────────────────────────────────────────────
   const footerY = isBleed ? h - 44 : 800;
-  ctx.fillStyle = '#5B8BAA'; ctx.font = 'bold 9px "Inter",sans-serif'; ctx.textAlign = 'left';
-  ctx.fillText(`weakness: ${cardData.weakness || '💧 ×2'}`, 34, footerY);
-  ctx.fillText(`resistance: ${cardData.resistance || '—'}`, 148, footerY);
-  ctx.textAlign = 'right'; ctx.fillText('retreat: 🐾', w - 34, footerY);
-  ctx.fillStyle = '#456B85'; ctx.font = '600 8px "Inter",sans-serif';
-  ctx.textAlign = 'left'; ctx.fillText(`Illus. ${cardData.illustrator || 'AI Artist'}`, 30, h - 13);
-  ctx.textAlign = 'right'; ctx.fillText('MemeCats • ©2026', w - 30, h - 13);
+  drawPremiumFooter(ctx, w, h, footerY, cardData, {
+    rarity: 'Rare',
+    labelColor: '#5B8BAA',
+    valueColor: '#A5DDF5',
+    metaColor: '#456B85',
+  });
 }
 
 // ============================================================
@@ -1766,6 +2140,7 @@ function drawEpic(ctx, w, h, cardData, artworkImage, foilStyle = 'Standard') {
       ctx.beginPath(); ctx.arc(sx, sy, sr, 0, Math.PI*2); ctx.fill();
     }
     ctx.restore();
+    applyGrain(ctx, 0, 0, w, h, 0.35);
   }
 
   // ── 2. BORDER ──────────────────────────────────────────────
@@ -1780,16 +2155,15 @@ function drawEpic(ctx, w, h, cardData, artworkImage, foilStyle = 'Standard') {
     ctx.strokeStyle = gg; ctx.lineWidth = 16;
     drawRoundRectPath(ctx, 8, 8, w-16, h-16, 22); ctx.stroke();
   } else {
-    // Purple→magenta gradient border with glow
-    ctx.shadowColor = '#A855F7'; ctx.shadowBlur = 16;
-    const bg = ctx.createLinearGradient(0,0,w,h);
-    bg.addColorStop(0,'#C026D3'); bg.addColorStop(0.5,'#A855F7'); bg.addColorStop(1,'#7C3AED');
-    ctx.strokeStyle = bg; ctx.lineWidth = 16;
-    drawRoundRectPath(ctx, 8, 8, w-16, h-16, 22); ctx.stroke();
-    // Inner shimmer rim
-    ctx.shadowBlur = 6; ctx.shadowColor = '#E9D5FF';
-    ctx.strokeStyle = 'rgba(243,232,255,0.7)'; ctx.lineWidth = 1.5;
-    drawRoundRectPath(ctx, 18, 18, w-36, h-36, 14); ctx.stroke();
+    // Beveled amethyst border: metal ungu ber-specular, arcane ornate
+    drawBeveledBorder(ctx, w, h, {
+      inset: 8, width: 16, radius: 22,
+      stops: METAL_STOPS.purple,
+      bright: 'rgba(243,232,255,0.85)',
+      chamfer: 'rgba(30,10,55,0.80)',
+      innerDark: 'rgba(46,16,101,0.60)',
+      glow: '#A855F7',
+    });
   }
   ctx.restore();
 
@@ -1807,7 +2181,9 @@ function drawEpic(ctx, w, h, cardData, artworkImage, foilStyle = 'Standard') {
       });
       ctx.restore();
     } else {
-      [[20,20],[w-20,20],[20,h-20],[w-20,h-20]].forEach(([cx,cy]) => drawAmethystGem(ctx, cx, cy, 11));
+      // Gem amethyst faceted sungguhan di 4 sudut
+      const amethyst = { light: '#E9D5FF', mid: '#A855F7', dark: '#6B21A8', rim: '#2E1065', glow: '#A855F7' };
+      [[20,20],[w-20,20],[20,h-20],[w-20,h-20]].forEach(([cx,cy]) => drawFacetedGem(ctx, cx, cy, 13, amethyst));
     }
   }
 
@@ -1857,12 +2233,16 @@ function drawEpic(ctx, w, h, cardData, artworkImage, foilStyle = 'Standard') {
   const nx = isBleed ? (foilStyle === 'Full Art ex' ? 100 : 48) : nameX;
   const tStroke = (foilStyle === 'Secret Gold') ? '#78350F' : '#2E1065';
   const tFill = (isBleed && foilStyle === 'Special Illustration') ? '#7C3AED' : (foilStyle === 'Secret Gold' ? '#FCD34D' : '#F8F0FF');
+  // Nama pakai Cinzel — mood arcane dimulai dari Epic
+  const epicName = cardData.name || 'Meme Cat';
+  const epicNameFont = fitFont(ctx, epicName, '800', 22, '"Cinzel","Outfit",serif', w - nx - 165);
   if (isBleed && foilStyle === 'Special Illustration') {
-    ctx.fillStyle = tFill; ctx.font='800 23px "Outfit",sans-serif'; ctx.textAlign='left';
-    ctx.fillText(cardData.name || 'Meme Cat', nx, textY);
-    ctx.textAlign='right'; ctx.fillText(`HP ${cardData.hypeScore || 400}`, w-72, textY);
+    ctx.fillStyle = tFill; ctx.font = epicNameFont; ctx.textAlign='left';
+    ctx.fillText(epicName, nx, textY);
+    ctx.textAlign='right'; ctx.font='800 23px "Outfit",sans-serif';
+    ctx.fillText(`HP ${cardData.hypeScore || 400}`, w-72, textY);
   } else {
-    drawTextWithStroke(ctx, cardData.name || 'Meme Cat', nx, textY, '800 23px "Outfit",sans-serif', tFill, tStroke, 3);
+    drawTextWithStroke(ctx, epicName, nx, textY, epicNameFont, tFill, tStroke, 3);
     ctx.save(); ctx.textAlign='right';
     drawTextWithStroke(ctx, `HP ${cardData.hypeScore || 400}`, w-72, textY, 'bold 21px "Outfit",sans-serif', tFill, tStroke, 2.5);
     ctx.restore();
@@ -1879,6 +2259,8 @@ function drawEpic(ctx, w, h, cardData, artworkImage, foilStyle = 'Standard') {
     ctx.restore();
     if (artworkImage) drawCoverImage(ctx, artworkImage, artX, artY, artW, artH, cardData._imgTransform);
     else { ctx.fillStyle = '#1A0B3D'; ctx.fillRect(artX, artY, artW, artH); }
+    // Feathered seam + element grade
+    finishArtworkWindow(ctx, artX, artY, artW, artH, cardData.element);
     // Constellation ornament around the artwork
     drawConstellationFrame(ctx, artX, artY, artW, artH);
   }
@@ -1966,13 +2348,12 @@ function drawEpic(ctx, w, h, cardData, artworkImage, foilStyle = 'Standard') {
 
   // ── 7. FOOTER ──────────────────────────────────────────────
   const footerY = isBleed ? h - 44 : 800;
-  ctx.fillStyle = '#9B7FC9'; ctx.font = 'bold 9px "Inter",sans-serif'; ctx.textAlign = 'left';
-  ctx.fillText(`weakness: ${cardData.weakness || '🌑 ×2'}`, 34, footerY);
-  ctx.fillText(`resistance: ${cardData.resistance || '—'}`, 148, footerY);
-  ctx.textAlign = 'right'; ctx.fillText('retreat: 🐾🐾', w - 34, footerY);
-  ctx.fillStyle = '#6B5491'; ctx.font = '600 8px "Inter",sans-serif';
-  ctx.textAlign = 'left'; ctx.fillText(`Illus. ${cardData.illustrator || 'AI Artist'}`, 30, h - 13);
-  ctx.textAlign = 'right'; ctx.fillText('MemeCats • ©2026', w - 30, h - 13);
+  drawPremiumFooter(ctx, w, h, footerY, cardData, {
+    rarity: 'Epic',
+    labelColor: '#9B7FC9',
+    valueColor: '#E5D5FF',
+    metaColor: '#6B5491',
+  });
 }
 
 // ============================================================
@@ -2017,31 +2398,33 @@ function drawLegendary(ctx, w, h, cardData, artworkImage, foilStyle = 'Standard'
       ctx.beginPath(); ctx.arc(sx, sy, sr, 0, Math.PI*2); ctx.fill();
     }
     ctx.restore();
+    applyGrain(ctx, 0, 0, w, h, 0.4);
   }
 
   // ── 2. TRIPLE GOLD BORDER ──────────────────────────────────
   ctx.save();
   if (foilStyle === 'Special Illustration') {
     drawLegendaryGoldLeavesBorder(ctx, w, h, 18);
-  } else {
-    if (foilStyle === 'Reverse Holo') {
-      const rg = ctx.createLinearGradient(0, 0, w, h);
-      rg.addColorStop(0,'#F59E0B'); rg.addColorStop(0.25,'#FBBF24'); rg.addColorStop(0.5,'#A7F3D0');
-      rg.addColorStop(0.75,'#BFDBFE'); rg.addColorStop(1,'#EC4899');
-      ctx.strokeStyle = rg;
-    } else {
-      ctx.shadowColor = '#F59E0B'; ctx.shadowBlur = 16;
-      ctx.strokeStyle = goldGrad;
-    }
+  } else if (foilStyle === 'Reverse Holo') {
+    const rg = ctx.createLinearGradient(0, 0, w, h);
+    rg.addColorStop(0,'#F59E0B'); rg.addColorStop(0.25,'#FBBF24'); rg.addColorStop(0.5,'#A7F3D0');
+    rg.addColorStop(0.75,'#BFDBFE'); rg.addColorStop(1,'#EC4899');
+    ctx.strokeStyle = rg;
     ctx.lineWidth = 16;
     drawRoundRectPath(ctx, 9, 9, w - 18, h - 18, 22); ctx.stroke();
-    ctx.shadowBlur = 0;
-    // Bright inner line
     ctx.strokeStyle = '#FEF9C3'; ctx.lineWidth = 2;
     drawRoundRectPath(ctx, 18, 18, w - 36, h - 36, 15); ctx.stroke();
-    // Dark chamfer innermost
-    ctx.strokeStyle = 'rgba(120,53,15,0.6)'; ctx.lineWidth = 1;
-    drawRoundRectPath(ctx, 22, 22, w - 44, h - 44, 13); ctx.stroke();
+  } else {
+    // Border emas beveled metalik — specular ramp + chamfer, bukan
+    // gradient datar. Ini "gold leaf" versi Royal Artifact.
+    drawBeveledBorder(ctx, w, h, {
+      inset: 9, width: 16, radius: 22,
+      stops: METAL_STOPS.gold,
+      bright: 'rgba(254,249,195,0.95)',
+      chamfer: 'rgba(58,32,4,0.85)',
+      innerDark: 'rgba(120,53,15,0.65)',
+      glow: '#F59E0B',
+    });
   }
 
   // 8-point star diamond gems at corners
@@ -2079,16 +2462,18 @@ function drawLegendary(ctx, w, h, cardData, artworkImage, foilStyle = 'Standard'
   drawElementSymbol(ctx, isBleed ? 58 : 54, iconY, 15, cardData.element);
   ctx.restore();
 
-  // Name (gold gradient) + HP
+  // Name (gold gradient, Cinzel — font display royal) + HP
   const textY = isBleed ? 74 : 98;
   const nameX = (foilStyle === 'Full Art ex') ? 144 : (isBleed ? 88 : 82);
   ctx.save();
-  ctx.font = '900 24px "Outfit",sans-serif'; ctx.textAlign = 'left';
+  const legendName = cardData.name || 'Meme Cat';
+  ctx.font = fitFont(ctx, legendName, '900', 23, '"Cinzel","Outfit",serif', w - nameX - 170);
+  ctx.textAlign = 'left';
   ctx.lineWidth = 3.5; ctx.lineJoin = 'round'; ctx.strokeStyle = '#3D2606';
-  ctx.strokeText(cardData.name || 'Meme Cat', nameX, textY);
+  ctx.strokeText(legendName, nameX, textY);
   const ng = ctx.createLinearGradient(nameX, textY - 20, nameX, textY + 4);
   ng.addColorStop(0, '#FEF9C3'); ng.addColorStop(0.5, '#FCD34D'); ng.addColorStop(1, '#D97706');
-  ctx.fillStyle = ng; ctx.fillText(cardData.name || 'Meme Cat', nameX, textY);
+  ctx.fillStyle = ng; ctx.fillText(legendName, nameX, textY);
   ctx.restore();
 
   ctx.save(); ctx.textAlign = 'right';
@@ -2110,11 +2495,13 @@ function drawLegendary(ctx, w, h, cardData, artworkImage, foilStyle = 'Standard'
     }
     if (artworkImage) drawCoverImage(ctx, artworkImage, artX, artY, artW, artH, cardData._imgTransform);
     else { ctx.fillStyle = '#1A0F02'; ctx.fillRect(artX, artY, artW, artH); }
-    // Filigree flourishes in corners
-    drawGoldFiligreeCorner(ctx, artX,      artY,      30,  1,  1);
-    drawGoldFiligreeCorner(ctx, artX+artW, artY,      30, -1,  1);
-    drawGoldFiligreeCorner(ctx, artX,      artY+artH, 30,  1, -1);
-    drawGoldFiligreeCorner(ctx, artX+artW, artY+artH, 30, -1, -1);
+    // Feathered seam + element grade
+    finishArtworkWindow(ctx, artX, artY, artW, artH, cardData.element);
+    // Royal filigree berlapis (ukiran emas dengan kedalaman) di 4 sudut
+    drawRoyalFiligree(ctx, artX,      artY,      42,  1,  1);
+    drawRoyalFiligree(ctx, artX+artW, artY,      42, -1,  1);
+    drawRoyalFiligree(ctx, artX,      artY+artH, 42,  1, -1);
+    drawRoyalFiligree(ctx, artX+artW, artY+artH, 42, -1, -1);
     // Gold sparkle dots along sides
     ctx.save(); ctx.fillStyle = '#FEF08A'; ctx.shadowColor = '#F59E0B'; ctx.shadowBlur = 5;
     for (let i = 1; i < 6; i++) {
@@ -2134,17 +2521,11 @@ function drawLegendary(ctx, w, h, cardData, artworkImage, foilStyle = 'Standard'
     ctx.restore();
   }
 
-  // ── 6. ATTACK PANEL ────────────────────────────────────────
+  // ── 6. ATTACK PANEL — PARCHMENT (Royal Artifact) ───────────
+  // Kertas tua bertekstur dengan trim emas; teks jadi gelap seperti
+  // tinta di gulungan mantra
   const panelY = isBleed ? 478 : 510, panelH = isBleed ? 302 : 262;
-  ctx.save();
-  ctx.fillStyle = 'rgba(3,2,8,0.92)';
-  drawRoundRectPath(ctx, 28, panelY, w-56, panelH, 16); ctx.fill();
-  // Double gold border (outer + inner gap)
-  ctx.strokeStyle = goldGrad; ctx.lineWidth = 2.5;
-  drawRoundRectPath(ctx, 28, panelY, w-56, panelH, 16); ctx.stroke();
-  ctx.strokeStyle = 'rgba(254,240,138,0.4)'; ctx.lineWidth = 1;
-  drawRoundRectPath(ctx, 34, panelY+6, w-68, panelH-12, 12); ctx.stroke();
-  ctx.restore();
+  drawParchmentPanel(ctx, 28, panelY, w-56, panelH, 16);
 
   // LEGENDARY RULE banner stamp at top of panel
   ctx.save();
@@ -2158,19 +2539,21 @@ function drawLegendary(ctx, w, h, cardData, artworkImage, foilStyle = 'Standard'
   ctx.fillText('★ LEGENDARY CROWN RULE ★', w/2, bannerY + 15);
   ctx.restore();
 
-  // Attack 1
+  // Attack 1 — tinta gelap di atas parchment
   const a1y = isBleed ? panelY + 64 : panelY + 70;
   drawElementSymbol(ctx, 60, a1y - 8, 15, cardData.element);
-  ctx.fillStyle = '#FFFDF0'; ctx.font = '800 22px "Outfit",sans-serif'; ctx.textAlign = 'left';
+  ctx.fillStyle = '#2E1F06'; ctx.font = '800 22px "Outfit",sans-serif'; ctx.textAlign = 'left';
   ctx.fillText(cardData.attackName1 || 'Omega Purr', 90, a1y);
-  ctx.fillStyle = '#FBBF24'; ctx.textAlign = 'right';
+  ctx.fillStyle = '#8A5A0B'; ctx.textAlign = 'right';
   ctx.fillText(`+${cardData.likesPerSec || 15} L/s`, w - 58, a1y);
 
-  // Gold divider
+  // Divider tinta emas-cokelat
   ctx.save();
-  ctx.shadowColor = '#F59E0B'; ctx.shadowBlur = 5;
-  ctx.strokeStyle = 'rgba(251,191,36,0.35)'; ctx.lineWidth = 1;
-  ctx.beginPath(); ctx.moveTo(40, a1y + 24); ctx.lineTo(w-40, a1y + 24); ctx.stroke();
+  ctx.strokeStyle = 'rgba(138,90,11,0.45)'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(48, a1y + 24); ctx.lineTo(w-48, a1y + 24); ctx.stroke();
+  // Ornamen kecil di tengah divider
+  ctx.fillStyle = 'rgba(138,90,11,0.55)';
+  starPath(ctx, w/2, a1y + 24, 4, 4, 1.6); ctx.fill();
   ctx.restore();
 
   // Attack 2
@@ -2178,30 +2561,29 @@ function drawLegendary(ctx, w, h, cardData, artworkImage, foilStyle = 'Standard'
   drawElementSymbol(ctx, 60, a2y - 8, 15, cardData.element);
   drawElementSymbol(ctx, 95, a2y - 8, 15, cardData.element);
   drawElementSymbol(ctx, 130, a2y - 8, 15, 'Normal');
-  ctx.fillStyle = '#FFFDF0'; ctx.font = '800 22px "Outfit",sans-serif'; ctx.textAlign = 'left';
+  ctx.fillStyle = '#2E1F06'; ctx.font = '800 22px "Outfit",sans-serif'; ctx.textAlign = 'left';
   ctx.fillText(cardData.attackName2 || 'Golden Hype', 160, a2y);
-  ctx.fillStyle = '#FBBF24'; ctx.textAlign = 'right';
+  ctx.fillStyle = '#8A5A0B'; ctx.textAlign = 'right';
   ctx.fillText(`+${cardData.hypeScore || 800} HP`, w - 58, a2y);
 
   // Rule text
-  ctx.fillStyle = '#FCD34D'; ctx.font = '600 10px "Inter",sans-serif'; ctx.textAlign = 'center';
+  ctx.fillStyle = '#8A5A0B'; ctx.font = '600 10px "Inter",sans-serif'; ctx.textAlign = 'center';
   ctx.fillText('Generates coins at maximum divine efficiency.', w/2, a2y + 36);
 
-  // Description
+  // Description — tinta cokelat tua italic
   const descY = isBleed ? panelY + 232 : panelY + 218;
   drawWrappedText(ctx, cardData.description || 'Penguasa internet tertinggi yang disembah para netizen. Kehadirannya melipatgandakan hype global secara instan.', w/2, descY, w - 96, 16,
-    '#D6BC8A', 'italic 500 12px "Inter",sans-serif'
+    '#5B451D', 'italic 500 12px "Inter",sans-serif'
   );
 
   // ── 7. FOOTER ──────────────────────────────────────────────
   const footerY = isBleed ? h - 46 : 802;
-  ctx.fillStyle = '#A8895A'; ctx.font = 'bold 9px "Inter",sans-serif'; ctx.textAlign = 'left';
-  ctx.fillText(`weakness: ${cardData.weakness || '💧 ×3'}`, 35, footerY);
-  ctx.fillText(`resistance: ${cardData.resistance || '—'}`, 150, footerY);
-  ctx.textAlign = 'right'; ctx.fillText('retreat: 🐾🐾', w - 35, footerY);
-  ctx.fillStyle = '#D97706'; ctx.font = '600 8px "Inter",sans-serif';
-  ctx.textAlign = 'left'; ctx.fillText(`Illus. ${cardData.illustrator || 'AI Mastermind'}`, 30, h - 13);
-  ctx.textAlign = 'right'; ctx.fillText('MemeCats • ©2026', w - 30, h - 13);
+  drawPremiumFooter(ctx, w, h, footerY, cardData, {
+    rarity: 'Legendary',
+    labelColor: '#A8895A',
+    valueColor: '#FCD34D',
+    metaColor: '#D97706',
+  });
 }
 
 function applySecretGoldOverlay(ctx, w, h) {
@@ -2233,9 +2615,13 @@ function applySecretGoldOverlay(ctx, w, h) {
  */
 export function drawCardCanvas(cardData, artworkImage) {
   const canvas = document.createElement('canvas');
-  canvas.width = 600;
-  canvas.height = 840;
+  // Resolusi 2× di tier medium/high supaya teks & garis tetap tajam saat
+  // kartu tampil besar; koordinat logis tetap 600×840 berkat ctx.scale
+  const S = getQualityConfig().canvasScale;
+  canvas.width = 600 * S;
+  canvas.height = 840 * S;
   const ctx = canvas.getContext('2d');
+  ctx.scale(S, S);
 
   const rarity = (cardData.rarity || 'Common').toLowerCase();
   const foilStyle = cardData.foilStyle || 'Standard';
@@ -2247,19 +2633,21 @@ export function drawCardCanvas(cardData, artworkImage) {
     offsetY: cardData.imgOffsetY ?? 0.0,
   };
 
+  // Dimensi LOGIS (bukan piksel fisik) — ctx sudah di-scale
+  const W = 600, H = 840;
   if (rarity === 'rare') {
-    drawRare(ctx, canvas.width, canvas.height, cardData, artworkImage, foilStyle);
+    drawRare(ctx, W, H, cardData, artworkImage, foilStyle);
   } else if (rarity === 'epic') {
-    drawEpic(ctx, canvas.width, canvas.height, cardData, artworkImage, foilStyle);
+    drawEpic(ctx, W, H, cardData, artworkImage, foilStyle);
   } else if (rarity === 'legendary') {
-    drawLegendary(ctx, canvas.width, canvas.height, cardData, artworkImage, foilStyle);
+    drawLegendary(ctx, W, H, cardData, artworkImage, foilStyle);
   } else {
-    drawCommon(ctx, canvas.width, canvas.height, cardData, artworkImage, foilStyle);
+    drawCommon(ctx, W, H, cardData, artworkImage, foilStyle);
   }
 
   // If foil style is Secret Gold, apply gold overlay for extra sparkle wash
   if (foilStyle === 'Secret Gold') {
-    applySecretGoldOverlay(ctx, canvas.width, canvas.height);
+    applySecretGoldOverlay(ctx, W, H);
   }
 
   return canvas;
