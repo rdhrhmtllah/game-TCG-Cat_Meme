@@ -2607,6 +2607,387 @@ function applySecretGoldOverlay(ctx, w, h) {
   ctx.restore();
 }
 
+// ============================================================
+// CARD BACK — "GRAND SIGIL" (Hybrid Fantasy-Luxe)
+// Punggung kartu aspek-benar 600×840 (dulunya 512×512 persegi yang
+// direntangkan → medallion lonjong). Reuse helper premium yang sama
+// dengan wajah kartu: bevel metalik, grain, filigree, pip.
+// ============================================================
+
+const BACK_THEMES = {
+  common: {
+    metal: METAL_STOPS.silver, glow: null, accent: '#CBD5E1', dim: '#64748B',
+    bg: ['#2E3A4E', '#161E30', '#090E1B'], emblem: '#C7D2DE',
+    text: '#E8EDF4', textStroke: '#1A2333', discTop: '#3A4658', discBottom: '#141C2C',
+  },
+  rare: {
+    metal: METAL_STOPS.cyan, glow: '#06B6D4', accent: '#67E8F9', dim: '#0E7490',
+    bg: ['#0B2F4E', '#071B33', '#030B18'], emblem: '#7DD3FC',
+    text: '#E0F7FF', textStroke: '#083049', discTop: '#0E3A5C', discBottom: '#051526',
+  },
+  epic: {
+    metal: METAL_STOPS.purple, glow: '#A855F7', accent: '#C084FC', dim: '#7E22CE',
+    bg: ['#2C1260', '#180A38', '#0A0419'], emblem: '#D8B4FE',
+    text: '#F3E8FF', textStroke: '#31106B', discTop: '#371670', discBottom: '#120730',
+  },
+  legendary: {
+    metal: METAL_STOPS.gold, glow: '#F59E0B', accent: '#FCD34D', dim: '#B45309',
+    bg: ['#3C2506', '#1C1102', '#090400'], emblem: '#FCD34D',
+    text: '#FEF3C7', textStroke: '#4A2E06', discTop: '#453010', discBottom: '#150C02',
+  },
+};
+
+// Teks melengkung mengikuti busur lingkaran (per karakter dirotasi)
+function drawArcText(ctx, text, cx, cy, radius, font, fill, stroke, strokeW, gapRad = 0.012) {
+  ctx.save();
+  ctx.font = font;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'alphabetic';
+  const chars = [...text];
+  const widths = chars.map((ch) => ctx.measureText(ch).width);
+  const totalArc = widths.reduce((s, w) => s + w / radius, 0) + gapRad * (chars.length - 1);
+  let angle = -Math.PI / 2 - totalArc / 2;
+  for (let i = 0; i < chars.length; i++) {
+    const chArc = widths[i] / radius;
+    angle += chArc / 2;
+    const x = cx + Math.cos(angle) * radius;
+    const y = cy + Math.sin(angle) * radius;
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(angle + Math.PI / 2);
+    if (stroke) {
+      ctx.strokeStyle = stroke;
+      ctx.lineWidth = strokeW;
+      ctx.lineJoin = 'round';
+      ctx.strokeText(chars[i], 0, 0);
+    }
+    ctx.fillStyle = fill;
+    ctx.fillText(chars[i], 0, 0);
+    ctx.restore();
+    angle += chArc / 2 + gapRad;
+  }
+  ctx.restore();
+}
+
+// Emblem kepala kucing MemeCats (dipindah dari Card3D.vue) + mahkota
+function drawStylizedCatHead(ctx, cx, cy, radius, color, drawCrown = false) {
+  ctx.save();
+  ctx.strokeStyle = color;
+  ctx.lineWidth = radius * 0.08;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+
+  if (drawCrown) {
+    ctx.save();
+    ctx.fillStyle = '#FEF08A';
+    ctx.strokeStyle = '#D97706';
+    ctx.lineWidth = radius * 0.06;
+    ctx.beginPath();
+    ctx.moveTo(cx - radius * 0.25, cy - radius * 0.45);
+    ctx.lineTo(cx - radius * 0.35, cy - radius * 0.8);
+    ctx.lineTo(cx - radius * 0.12, cy - radius * 0.62);
+    ctx.lineTo(cx, cy - radius * 0.88);
+    ctx.lineTo(cx + radius * 0.12, cy - radius * 0.62);
+    ctx.lineTo(cx + radius * 0.35, cy - radius * 0.8);
+    ctx.lineTo(cx + radius * 0.25, cy - radius * 0.45);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = '#EF4444';
+    ctx.beginPath();
+    ctx.arc(cx - radius * 0.35, cy - radius * 0.8, 3, 0, Math.PI * 2);
+    ctx.arc(cx, cy - radius * 0.88, 3, 0, Math.PI * 2);
+    ctx.arc(cx + radius * 0.35, cy - radius * 0.8, 3, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  // Telinga + garis wajah
+  ctx.beginPath();
+  ctx.moveTo(cx - radius * 0.25, cy - radius * 0.4);
+  ctx.lineTo(cx - radius * 0.65, cy - radius * 0.85);
+  ctx.lineTo(cx - radius * 0.65, cy - radius * 0.1);
+  ctx.quadraticCurveTo(cx - radius * 0.55, cy + radius * 0.45, cx, cy + radius * 0.55);
+  ctx.quadraticCurveTo(cx + radius * 0.55, cy + radius * 0.45, cx + radius * 0.65, cy - radius * 0.1);
+  ctx.lineTo(cx + radius * 0.65, cy - radius * 0.85);
+  ctx.lineTo(cx + radius * 0.25, cy - radius * 0.4);
+  ctx.closePath();
+  ctx.stroke();
+
+  // Kumis
+  ctx.lineWidth = radius * 0.05;
+  ctx.beginPath();
+  ctx.moveTo(cx - radius * 0.3, cy + radius * 0.1);  ctx.lineTo(cx - radius * 0.8, cy + radius * 0.05);
+  ctx.moveTo(cx - radius * 0.3, cy + radius * 0.18); ctx.lineTo(cx - radius * 0.85, cy + radius * 0.18);
+  ctx.moveTo(cx - radius * 0.3, cy + radius * 0.26); ctx.lineTo(cx - radius * 0.8, cy + radius * 0.3);
+  ctx.moveTo(cx + radius * 0.3, cy + radius * 0.1);  ctx.lineTo(cx + radius * 0.8, cy + radius * 0.05);
+  ctx.moveTo(cx + radius * 0.3, cy + radius * 0.18); ctx.lineTo(cx + radius * 0.85, cy + radius * 0.18);
+  ctx.moveTo(cx + radius * 0.3, cy + radius * 0.26); ctx.lineTo(cx + radius * 0.8, cy + radius * 0.3);
+  ctx.stroke();
+
+  // Mata menyala
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.ellipse(cx - radius * 0.22, cy - radius * 0.08, radius * 0.1, radius * 0.04, -Math.PI / 6, 0, Math.PI * 2);
+  ctx.ellipse(cx + radius * 0.22, cy - radius * 0.08, radius * 0.1, radius * 0.04, Math.PI / 6, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Hidung
+  ctx.beginPath();
+  ctx.moveTo(cx - radius * 0.05, cy + radius * 0.12);
+  ctx.lineTo(cx + radius * 0.05, cy + radius * 0.12);
+  ctx.lineTo(cx, cy + radius * 0.17);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.restore();
+}
+
+/**
+ * Punggung kartu "Grand Sigil" — aspek 600×840, per-rarity theme.
+ * @param {string} rarity - Common | Rare | Epic | Legendary
+ * @returns {HTMLCanvasElement}
+ */
+export function drawCardBackCanvas(rarity) {
+  const canvas = document.createElement('canvas');
+  const S = getQualityConfig().canvasScale;
+  const W = 600, H = 840;
+  canvas.width = W * S;
+  canvas.height = H * S;
+  const ctx = canvas.getContext('2d');
+  ctx.scale(S, S);
+
+  const r = (rarity || 'Common').toLowerCase();
+  const theme = BACK_THEMES[r] || BACK_THEMES.common;
+  const isLegendary = r === 'legendary';
+  const cx = W / 2, cy = H / 2 + 14; // medallion sedikit di bawah tengah optik
+  const rand = createSeededRandom(r.length * 1337 + 42);
+
+  // ── 1. Background: radial dalam + nebula + starfield + grain ──
+  const bg = ctx.createRadialGradient(cx, cy - 60, 30, cx, cy, H * 0.75);
+  bg.addColorStop(0, theme.bg[0]);
+  bg.addColorStop(0.55, theme.bg[1]);
+  bg.addColorStop(1, theme.bg[2]);
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, W, H);
+
+  // Nebula blobs lembut
+  for (let i = 0; i < 6; i++) {
+    const nx = rand() * W, ny = rand() * H, nr = 90 + rand() * 150;
+    const ng = ctx.createRadialGradient(nx, ny, 0, nx, ny, nr);
+    ng.addColorStop(0, `${theme.accent}14`); // ~8% alpha hex
+    ng.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = ng;
+    ctx.beginPath(); ctx.arc(nx, ny, nr, 0, Math.PI * 2); ctx.fill();
+  }
+
+  // Starfield + beberapa bintang 4-titik
+  ctx.save();
+  ctx.fillStyle = theme.accent;
+  for (let i = 0; i < 70; i++) {
+    ctx.globalAlpha = 0.10 + rand() * 0.45;
+    ctx.beginPath();
+    ctx.arc(rand() * W, rand() * H, 0.5 + rand() * 1.3, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  for (let i = 0; i < 7; i++) {
+    ctx.globalAlpha = 0.35 + rand() * 0.45;
+    starPath(ctx, rand() * W, rand() * H, 4, 3 + rand() * 4, 1 + rand() * 1.4);
+    ctx.fill();
+  }
+  ctx.restore();
+  applyGrain(ctx, 0, 0, W, H, 0.45);
+
+  // ── 2. Sunburst di belakang medallion ──
+  ctx.save();
+  ctx.globalAlpha = isLegendary ? 0.10 : 0.07;
+  ctx.fillStyle = theme.accent;
+  const rayCount = 18;
+  for (let i = 0; i < rayCount; i++) {
+    const a = (Math.PI * 2 / rayCount) * i;
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.lineTo(cx + Math.cos(a - 0.028) * 330, cy + Math.sin(a - 0.028) * 330);
+    ctx.lineTo(cx + Math.cos(a + 0.028) * 330, cy + Math.sin(a + 0.028) * 330);
+    ctx.closePath();
+    ctx.fill();
+  }
+  ctx.restore();
+
+  // ── 3. Pita energi dari sudut menuju medallion ──
+  ctx.save();
+  ctx.lineCap = 'round';
+  const ribbons = [
+    [70, 120, 190, 300], [W - 70, 120, W - 190, 300],
+    [70, H - 120, 190, H - 300], [W - 70, H - 120, W - 190, H - 300],
+  ];
+  ribbons.forEach(([sx, sy, mx, my]) => {
+    const grad = ctx.createLinearGradient(sx, sy, cx, cy);
+    grad.addColorStop(0, `${theme.accent}00`);
+    grad.addColorStop(0.5, `${theme.accent}59`);
+    grad.addColorStop(1, `${theme.accent}00`);
+    ctx.strokeStyle = grad;
+    if (theme.glow) { ctx.shadowColor = theme.glow; ctx.shadowBlur = 8; }
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(sx, sy);
+    ctx.quadraticCurveTo(mx, my, cx + (sx < cx ? -132 : 132) * 0.72, cy + (sy < cy ? -132 : 132) * 0.72);
+    ctx.stroke();
+  });
+  ctx.restore();
+
+  // ── 4. Grand medallion ──
+  // Glow dasar
+  const mg = ctx.createRadialGradient(cx, cy, 40, cx, cy, 210);
+  mg.addColorStop(0, `${theme.accent}26`);
+  mg.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = mg;
+  ctx.beginPath(); ctx.arc(cx, cy, 210, 0, Math.PI * 2); ctx.fill();
+
+  // Cincin luar metalik ber-bevel (stroke bertumpuk)
+  const ringGrad = ctx.createLinearGradient(cx, cy - 150, cx, cy + 150);
+  theme.metal.forEach(([p, c]) => ringGrad.addColorStop(p, c));
+  ctx.save();
+  if (theme.glow) { ctx.shadowColor = theme.glow; ctx.shadowBlur = 16; }
+  ctx.strokeStyle = ringGrad; ctx.lineWidth = 12;
+  ctx.beginPath(); ctx.arc(cx, cy, 148, 0, Math.PI * 2); ctx.stroke();
+  ctx.shadowBlur = 0;
+  ctx.strokeStyle = 'rgba(0,0,0,0.55)'; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.arc(cx, cy, 155, 0, Math.PI * 2); ctx.stroke();
+  ctx.strokeStyle = 'rgba(255,255,255,0.65)'; ctx.lineWidth = 1.2;
+  ctx.beginPath(); ctx.arc(cx, cy, 141.5, 0, Math.PI * 2); ctx.stroke();
+  ctx.restore();
+
+  // Tick marks di antara dua cincin
+  ctx.save();
+  ctx.strokeStyle = theme.accent;
+  ctx.globalAlpha = 0.55;
+  ctx.lineWidth = 1.5;
+  for (let i = 0; i < 60; i++) {
+    const a = (Math.PI * 2 / 60) * i;
+    const long = i % 5 === 0;
+    ctx.beginPath();
+    ctx.moveTo(cx + Math.cos(a) * (long ? 124 : 128), cy + Math.sin(a) * (long ? 124 : 128));
+    ctx.lineTo(cx + Math.cos(a) * 134, cy + Math.sin(a) * 134);
+    ctx.stroke();
+  }
+  ctx.restore();
+
+  // Cincin dalam tipis
+  ctx.strokeStyle = ringGrad; ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.arc(cx, cy, 118, 0, Math.PI * 2); ctx.stroke();
+
+  // Diamond di 4 titik mata angin cincin
+  [[0, -148], [148, 0], [0, 148], [-148, 0]].forEach(([dx2, dy2]) => {
+    ctx.save();
+    ctx.translate(cx + dx2, cy + dy2);
+    ctx.rotate(Math.PI / 4);
+    const dg = ctx.createLinearGradient(-8, -8, 8, 8);
+    dg.addColorStop(0, theme.accent); dg.addColorStop(1, theme.dim);
+    ctx.fillStyle = dg;
+    ctx.strokeStyle = 'rgba(0,0,0,0.5)';
+    ctx.lineWidth = 1.5;
+    ctx.fillRect(-7.5, -7.5, 15, 15);
+    ctx.strokeRect(-7.5, -7.5, 15, 15);
+    ctx.fillStyle = 'rgba(255,255,255,0.5)';
+    ctx.fillRect(-7.5, -7.5, 6, 6);
+    ctx.restore();
+  });
+
+  // Disc dalam
+  const disc = ctx.createRadialGradient(cx, cy - 40, 10, cx, cy, 118);
+  disc.addColorStop(0, theme.discTop);
+  disc.addColorStop(1, theme.discBottom);
+  ctx.fillStyle = disc;
+  ctx.beginPath(); ctx.arc(cx, cy, 116, 0, Math.PI * 2); ctx.fill();
+  ctx.save();
+  ctx.beginPath(); ctx.arc(cx, cy, 116, 0, Math.PI * 2); ctx.clip();
+  applyGrain(ctx, cx - 116, cy - 116, 232, 232, 0.5);
+  const discShadow = ctx.createRadialGradient(cx, cy, 80, cx, cy, 116);
+  discShadow.addColorStop(0, 'rgba(0,0,0,0)');
+  discShadow.addColorStop(1, 'rgba(0,0,0,0.5)');
+  ctx.fillStyle = discShadow;
+  ctx.fillRect(cx - 116, cy - 116, 232, 232);
+  ctx.restore();
+
+  // Emblem kucing (mahkota untuk Legendary) dengan glow
+  ctx.save();
+  if (theme.glow) { ctx.shadowColor = theme.glow; ctx.shadowBlur = 14; }
+  drawStylizedCatHead(ctx, cx, cy + 8, 74, theme.emblem, isLegendary);
+  ctx.restore();
+
+  // ── 5. Tipografi: MEMECATS melengkung di atas medallion ──
+  drawArcText(ctx, 'MEMECATS', cx, cy + 55, 285,
+    '800 44px "Cinzel","Outfit",serif', theme.text, theme.textStroke, 6, 0.02);
+  // Ornamen garis + diamond kecil di bawah judul arc
+  ctx.save();
+  ctx.strokeStyle = theme.accent; ctx.globalAlpha = 0.7; ctx.lineWidth = 1.2;
+  ctx.beginPath(); ctx.moveTo(cx - 90, 118); ctx.lineTo(cx - 22, 118); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(cx + 22, 118); ctx.lineTo(cx + 90, 118); ctx.stroke();
+  ctx.globalAlpha = 1;
+  ctx.fillStyle = theme.accent;
+  starPath(ctx, cx, 118, 4, 7, 2.6); ctx.fill();
+  ctx.restore();
+
+  // ── 6. Bawah: THE VIRAL COLLECTION + rarity pip ──
+  ctx.save();
+  ctx.textAlign = 'center';
+  ctx.font = '700 15px "Outfit",sans-serif';
+  ctx.letterSpacing = '4px';
+  ctx.strokeStyle = theme.textStroke; ctx.lineWidth = 3; ctx.lineJoin = 'round';
+  ctx.strokeText('THE VIRAL COLLECTION', cx, H - 96);
+  ctx.fillStyle = theme.text;
+  ctx.fillText('THE VIRAL COLLECTION', cx, H - 96);
+  ctx.letterSpacing = '0px';
+  // Garis pengapit
+  ctx.strokeStyle = theme.accent; ctx.globalAlpha = 0.55; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(cx - 150, H - 74); ctx.lineTo(cx - 24, H - 74); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(cx + 24, H - 74); ctx.lineTo(cx + 150, H - 74); ctx.stroke();
+  ctx.globalAlpha = 1;
+  ctx.restore();
+  drawRarityPip(ctx, cx, H - 77, rarity);
+
+  // ── 7. Ornamen sudut per-rarity ──
+  const corners = [[46, 46, 1, 1], [W - 46, 46, -1, 1], [46, H - 46, 1, -1], [W - 46, H - 46, -1, -1]];
+  if (isLegendary) {
+    corners.forEach(([x, y, dx2, dy2]) => drawRoyalFiligree(ctx, x, y, 46, dx2, dy2));
+  } else if (r === 'epic') {
+    const amethyst = { light: '#E9D5FF', mid: '#A855F7', dark: '#6B21A8', rim: '#2E1065', glow: '#A855F7' };
+    corners.forEach(([x, y]) => drawFacetedGem(ctx, x, y, 11, amethyst));
+  } else if (r === 'rare') {
+    drawCircuitCorners(ctx, 34, 34, W - 68, H - 68, '#38BDF8', '#67E8F9');
+  } else {
+    ctx.save();
+    ctx.strokeStyle = theme.accent; ctx.globalAlpha = 0.6; ctx.lineWidth = 2; ctx.lineCap = 'round';
+    corners.forEach(([x, y, dx2, dy2]) => {
+      ctx.beginPath();
+      ctx.moveTo(x + dx2 * 26, y);
+      ctx.lineTo(x, y);
+      ctx.lineTo(x, y + dy2 * 26);
+      ctx.stroke();
+    });
+    ctx.restore();
+  }
+
+  // ── 8. Border beveled metalik + vignette ──
+  drawBeveledBorder(ctx, W, H, {
+    inset: 10, width: 16, radius: 24,
+    stops: theme.metal,
+    bright: 'rgba(255,255,255,0.80)',
+    chamfer: 'rgba(0,0,0,0.70)',
+    innerDark: 'rgba(0,0,0,0.50)',
+    glow: theme.glow,
+  });
+  ctx.strokeStyle = theme.accent;
+  ctx.globalAlpha = 0.35; ctx.lineWidth = 1;
+  drawRoundRectPath(ctx, 26, 26, W - 52, H - 52, 16);
+  ctx.stroke();
+  ctx.globalAlpha = 1;
+  drawInnerShadowRect(ctx, 0, 0, W, H, 40, 'rgba(0,0,0,0.35)');
+
+  return canvas;
+}
+
 /**
  * Renders the full TCG layout for a card onto a canvas.
  * @param {Object} cardData - Metadata { name, rarity, description, hypeScore, likesPerSec, element, foilStyle }

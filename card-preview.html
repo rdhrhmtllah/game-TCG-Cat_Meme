@@ -19,7 +19,7 @@
   <h1 style="font-size:16px">MemeCats — Card Frame Preview (dev tool)</h1>
   <div id="grid"></div>
   <script type="module">
-    import { drawCardCanvas } from '/src/utils/cardRenderer.js';
+    import { drawCardCanvas, drawCardBackCanvas } from '/src/utils/cardRenderer.js';
     import { ensureFontsLoaded } from '/src/utils/fonts.js';
 
     const RARITIES = ['Common', 'Rare', 'Epic', 'Legendary'];
@@ -37,6 +37,26 @@
 
     await ensureFontsLoaded();
     const grid = document.getElementById('grid');
+
+    // Baris punggung kartu (Grand Sigil)
+    {
+      const h2 = document.createElement('h2');
+      h2.textContent = 'Card Backs — Grand Sigil';
+      grid.appendChild(h2);
+      const row = document.createElement('div');
+      row.className = 'row';
+      grid.appendChild(row);
+      for (const rarity of RARITIES) {
+        const cell = document.createElement('div');
+        cell.className = 'cell';
+        cell.appendChild(drawCardBackCanvas(rarity));
+        const label = document.createElement('span');
+        label.textContent = rarity;
+        cell.appendChild(label);
+        row.appendChild(cell);
+      }
+    }
+
     for (const rarity of RARITIES) {
       const h2 = document.createElement('h2');
       h2.textContent = rarity;
