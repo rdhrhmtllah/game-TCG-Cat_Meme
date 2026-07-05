@@ -1,9 +1,13 @@
 /**
- * Structured logger — pino + pino-pretty untuk development.
- * Semua module API menggunakan logger ini untuk konsistensi.
+ * Structured logger — pino (JSON) untuk semua environment.
+ * Semua module API memakai logger ini untuk konsistensi.
  *
- * Di production (NODE_ENV=production), output JSON untuk Vercel Logs.
- * Di development, pino-pretty memformat output agar mudah dibaca.
+ * CATATAN: SENGAJA tidak memakai transport `pino-pretty`. Transport pino
+ * dijalankan lewat worker-thread & di-resolve dari string target saat runtime;
+ * di bundle serverless Vercel `pino-pretty` tidak ikut ter-trace, sehingga
+ * `pino({ transport: { target: 'pino-pretty' }})` CRASH ("unable to determine
+ * transport target for pino-pretty") dan mematikan seluruh fungsi API.
+ * JSON line sudah cukup terbaca di dev & ditangkap rapi oleh Vercel Logs.
  */
 
 import pino from 'pino';
@@ -14,20 +18,6 @@ const logger = pino({
   level: isProduction ? 'info' : 'debug',
   base: undefined, // hilangkan pid, hostname — bersih
   timestamp: pino.stdTimeFunctions.isoTime,
-  ...(isProduction
-    ? {}
-    : {
-        transport: {
-          target: 'pino-pretty',
-          options: {
-            colorize: true,
-            translateTime: 'HH:MM:ss',
-            ignore: 'pid,hostname',
-            messageFormat: '[{context}] {msg}',
-            errorLikeObjectKeys: ['err', 'error'],
-          },
-        },
-      }),
 });
 
 /**
