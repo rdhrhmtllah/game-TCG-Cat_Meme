@@ -157,6 +157,7 @@ const missing = requiredEnvVars.filter(k => !process.env[k]);
 if (missing.length > 0) {
   console.error(`\n❌ Missing required environment variables: ${missing.join(', ')}`);
   console.error('   Pastikan file .env sudah diisi dengan benar.\n');
+  console.error('   Copy .env.example ke .env dan isi nilai yang diperlukan.\n');
   process.exit(1);
 }
 
@@ -165,4 +166,32 @@ server.listen(PORT, () => {
   logInfo('dev-server', `📋 Proxying /api/* → api/*.js handlers`);
   logInfo('dev-server', `📊 Log viewer aktif — lihat terminal ini untuk monitoring`);
   console.log(''); // spacer setelah pino-pretty output
+});
+
+// Graceful shutdown
+process.on('SIGTERM', () => {
+  logInfo('dev-server', 'SIGTERM received, closing server...');
+  server.close(() => {
+    logInfo('dev-server', 'Server closed');
+    process.exit(0);
+  });
+});
+
+process.on('SIGINT', () => {
+  logInfo('dev-server', 'SIGINT received, closing server...');
+  server.close(() => {
+    logInfo('dev-server', 'Server closed');
+    process.exit(0);
+  });
+});
+
+// Handle uncaught errors
+process.on('uncaughtException', (err) => {
+  logServerError('dev-server', 'Uncaught exception:', err);
+  process.exit(1);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  logServerError('dev-server', 'Unhandled rejection at:', promise, 'reason:', reason);
+  process.exit(1);
 });

@@ -1,5 +1,8 @@
 import { verifyToken } from './jwt.js';
 import { sendError } from './errors.js';
+import { db } from '../db/client.js';
+import { users } from '../db/schema.js';
+import { eq } from 'drizzle-orm';
 
 /**
  * Middleware verifikasi JWT untuk Vercel serverless functions.
@@ -22,6 +25,15 @@ export default function requireAuth(handler) {
       // Inject ke req object
       req.userId = payload.userId;
       req.username = payload.username;
+
+      // Blokir user yang di-ban (satu lookup PK, sumber kebenaran app-wide)
+      const [row] = await db.select({ banned: users.banned })
+        .from(users)
+        .where(eq(users.id, payload.userId))
+        .limit(1);
+      if (row?.banned) {
+        return sendError(res, 403, 'BANNED', 'Akun kamu diblokir. Hubungi admin.');
+      }
 
       return handler(req, res);
     } catch (err) {

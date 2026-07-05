@@ -1,0 +1,250 @@
+/* =========================================================
+   MEMECATS — Design Tokens (T.RICKS Glassmorphism Premium)
+   Semantic Token System · WCAG 2.2 AA · DM Sans Typography
+   ========================================================= */
+
+:root {
+  /* ===== TYPOGRAPHY TOKENS ===== */
+  --font-family-primary: 'DM Sans', 'Inter', system-ui, -apple-system, sans-serif;
+  --font-family-display: 'Outfit', 'DM Sans', system-ui, -apple-system, sans-serif;
+  --font-family-cinzel: 'Cinzel', 'Outfit', serif;
+  --font-family-mono: 'JetBrains Mono', 'Courier New', monospace;
+  
+  /* Font Sizes - T.RICKS Scale */
+  --font-size-2xs: 0.6875rem;   /* 11px */
+  --font-size-xs: 0.875rem;     /* 14px */
+  --font-size-sm: 0.9625rem;    /* 15.4px */
+  --font-size-base: 1rem;       /* 16px */
+  --font-size-md: 1.18125rem;   /* 18.9px */
+  --font-size-lg: 1.225rem;     /* 19.6px */
+  --font-size-xl: 1.4875rem;    /* 23.8px */
+  --font-size-2xl: 2.0125rem;   /* 32.2px */
+  --font-size-3xl: 5.425rem;    /* 86.8px */
+  
+  /* Font Weights */
+  --font-weight-normal: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --font-weight-bold: 700;
+  --font-weight-black: 900;
+  
+  /* Line Heights */
+  --line-height-tight: 1.2;
+  --line-height-base: 1.4;
+  --line-height-relaxed: 1.6;
+  
+  /* Letter Spacing */
+  --letter-spacing-tight: -0.01em;
+  --letter-spacing-normal: 0;
+  --letter-spacing-wide: 0.025em;
+  --letter-spacing-wider: 0.08em;
+  --letter-spacing-widest: 0.16em;
+
+  /* ===== COLOR TOKENS ===== */
+  /* Text Colors */
+  --color-text-primary: #EEEDF2;
+  --color-text-secondary: #94A3B8;
+  --color-text-tertiary: #64748B;
+  --color-text-inverse: #1C1C1C;
+  --color-text-accent: #F88CD4;
+  --color-text-success: #A7F3D0;
+  --color-text-error: #FECACA;
+  --color-text-warning: #FCD34D;
+  --color-text-info: #BFDBFE;
+  
+  /* Surface Colors — Deep Space */
+  --color-surface-base: #050816;
+  --color-surface-elevated: #0A0F24;
+  --color-surface-strong: #0D0628;
+  --color-surface-overlay: #0E1530;
+  --color-surface-highlight: #151D3A;
+  
+  /* Brand & Accent Colors */
+  --color-accent-primary: #7C3AED;
+  --color-accent-primary-hover: #8B5CF6;
+  --color-accent-primary-active: #6D28D9;
+  --color-accent-pink: #F88CD4;
+  --color-accent-cyan: #22D3EE;
+  
+  /* Rarity Colors */
+  --color-rarity-common: #94A3B8;
+  --color-rarity-rare: #38BDF8;
+  --color-rarity-epic: #A855F7;
+  --color-rarity-legendary: #F59E0B;
+  
+  /* Semantic Colors */
+  --color-success: #047857;
+  --color-success-light: #A7F3D0;
+  --color-error: #B91C1C;
+  --color-error-light: #FECACA;
+  --color-warning: #D97706;
+  --color-warning-light: #FCD34D;
+  --color-info: #1D4ED8;
+  --color-info-light: #BFDBFE;
+  
+  /* Border Colors — Enhanced */
+  --color-border-subtle: rgba(255, 255, 255, 0.04);
+  --color-border-default: rgba(255, 255, 255, 0.07);
+  --color-border-strong: rgba(255, 255, 255, 0.12);
+  --color-border-accent: rgba(124, 58, 237, 0.5);
+  --color-border-glow: rgba(124, 58, 237, 0.25);
+  
+  /* ===== SPACING TOKENS (T.RICKS Scale) ===== */
+  --space-1: 0.35rem;
+  --space-2: 0.875rem;
+  --space-3: 1.75rem;
+  --space-4: 1.925rem;
+  --space-5: 2.275rem;
+  --space-6: 2.625rem;
+  --space-7: 4.2875rem;
+  
+  /* Additional Common Spacing */
+  --space-xs: 0.25rem;
+  --space-sm: 0.5rem;
+  --space-md: 1rem;
+  --space-lg: 1.5rem;
+  --space-xl: 2rem;
+  --space-2xl: 3rem;
+  --space-3xl: 4rem;
+  
+  /* ===== RADIUS TOKENS ===== */
+  --radius-xs: 0.375rem;
+  --radius-sm: 0.5rem;
+  --radius-md: 0.75rem;
+  --radius-lg: 1rem;
+  --radius-xl: 1.25rem;
+  --radius-2xl: 1.75rem;
+  --radius-full: 9999px;
+  --radius-pill: 96rem;
+  
+  /* ===== SHADOW TOKENS ===== */
+  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.2);
+  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.25);
+  --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.35);
+  --shadow-xl: 0 12px 48px rgba(0, 0, 0, 0.45);
+  
+  /* Glass Shadows — Enhanced */
+  --shadow-glass:
+    0 8px 32px rgba(0, 0, 0, 0.35),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.1);
+  --shadow-glass-strong:
+    0 12px 40px rgba(0, 0, 0, 0.5),
+    inset 0 1px 0 rgba(255, 255, 255, 0.07),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.15);
+  --shadow-glass-glow:
+    0 8px 32px rgba(0, 0, 0, 0.35),
+    0 0 40px rgba(124, 58, 237, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  
+  /* Glow Shadows — Enhanced */
+  --shadow-glow-purple: 0 0 25px rgba(124, 58, 237, 0.2), 0 0 60px rgba(124, 58, 237, 0.06);
+  --shadow-glow-blue: 0 0 25px rgba(56, 189, 248, 0.2), 0 0 60px rgba(56, 189, 248, 0.06);
+  --shadow-glow-pink: 0 0 25px rgba(248, 140, 212, 0.2), 0 0 60px rgba(248, 140, 212, 0.06);
+  --shadow-glow-gold: 0 0 25px rgba(245, 158, 11, 0.25), 0 0 60px rgba(245, 158, 11, 0.08);
+  
+  /* ===== MOTION TOKENS ===== */
+  --motion-duration-instant: 100ms;
+  --motion-duration-fast: 200ms;
+  --motion-duration-base: 300ms;
+  --motion-duration-slow: 500ms;
+  --motion-duration-slower: 800ms;
+  
+  /* Easing Functions */
+  --motion-ease-standard: cubic-bezier(0.4, 0.0, 0.2, 1);
+  --motion-ease-decelerate: cubic-bezier(0.0, 0.0, 0.2, 1);
+  --motion-ease-accelerate: cubic-bezier(0.4, 0.0, 1, 1);
+  --motion-ease-bounce: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --motion-ease-spring: cubic-bezier(0.22, 1, 0.36, 1);
+  
+  /* ===== GLASS EFFECTS — Premium ===== */
+  --glass-blur-light: blur(8px);
+  --glass-blur-medium: blur(16px);
+  --glass-blur-strong: blur(24px);
+  --glass-blur-ultra: blur(48px);
+  
+  --glass-bg-light: rgba(10, 15, 36, 0.45);
+  --glass-bg-medium: rgba(10, 15, 36, 0.65);
+  --glass-bg-strong: rgba(10, 15, 36, 0.82);
+  --glass-bg-ultra: rgba(10, 15, 36, 0.95);
+  
+  /* Glass Border Gradients */
+  --glass-border-gradient: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.1) 0%,
+    rgba(255, 255, 255, 0.03) 40%,
+    rgba(124, 58, 237, 0.08) 60%,
+    rgba(255, 255, 255, 0.06) 100%
+  );
+  --glass-border-glow-gradient: linear-gradient(
+    135deg,
+    rgba(124, 58, 237, 0.3) 0%,
+    rgba(248, 140, 212, 0.15) 50%,
+    rgba(56, 189, 248, 0.2) 100%
+  );
+  
+  /* Glass Shimmer */
+  --glass-shimmer: linear-gradient(
+    110deg,
+    transparent 25%,
+    rgba(255, 255, 255, 0.03) 37%,
+    rgba(255, 255, 255, 0.06) 50%,
+    rgba(255, 255, 255, 0.03) 63%,
+    transparent 75%
+  );
+  
+  /* Mesh Gradients */
+  --gradient-mesh-primary: 
+    radial-gradient(ellipse 80% 50% at 20% 20%, rgba(124, 58, 237, 0.12) 0%, transparent 60%),
+    radial-gradient(ellipse 60% 40% at 80% 80%, rgba(56, 189, 248, 0.08) 0%, transparent 50%),
+    radial-gradient(ellipse 50% 50% at 50% 50%, rgba(248, 140, 212, 0.04) 0%, transparent 60%);
+  --gradient-mesh-accent:
+    radial-gradient(ellipse 60% 50% at 30% 10%, rgba(124, 58, 237, 0.15) 0%, transparent 50%),
+    radial-gradient(ellipse 50% 40% at 70% 90%, rgba(245, 158, 11, 0.06) 0%, transparent 50%);
+  
+  /* ===== Z-INDEX SCALE ===== */
+  --z-base: 0;
+  --z-dropdown: 10;
+  --z-sticky: 20;
+  --z-fixed: 30;
+  --z-modal-backdrop: 40;
+  --z-modal: 50;
+  --z-popover: 60;
+  --z-toast: 70;
+  --z-tooltip: 80;
+  --z-max: 100;
+  
+  /* ===== OPACITY SCALE ===== */
+  --opacity-disabled: 0.35;
+  --opacity-muted: 0.5;
+  --opacity-subtle: 0.7;
+  --opacity-visible: 0.85;
+  --opacity-full: 1;
+  
+  /* ===== BACKDROP BLUR ===== */
+  --backdrop-blur-sm: 4px;
+  --backdrop-blur-md: 8px;
+  --backdrop-blur-lg: 12px;
+  --backdrop-blur-xl: 16px;
+  --backdrop-blur-2xl: 24px;
+}
+
+/* ===== REDUCED MOTION ===== */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --motion-duration-instant: 0ms;
+    --motion-duration-fast: 0ms;
+    --motion-duration-base: 0ms;
+    --motion-duration-slow: 0ms;
+    --motion-duration-slower: 0ms;
+  }
+}
+
+/* ===== HIGH CONTRAST MODE ===== */
+@media (prefers-contrast: high) {
+  :root {
+    --color-border-subtle: rgba(255, 255, 255, 0.15);
+    --color-border-default: rgba(255, 255, 255, 0.25);
+    --color-border-strong: rgba(255, 255, 255, 0.4);
+  }
+}

@@ -8,6 +8,9 @@ export const users = pgTable('users', {
   id: serial('id').primaryKey(),
   username: varchar('username', { length: 20 }).notNull().unique(),
   passwordHash: varchar('password_hash', { length: 255 }).notNull(),
+  // Email wajib untuk pendaftar baru; nullable agar akun lama (grandfathered)
+  // tidak melanggar constraint. Unik → satu email = satu akun.
+  email: varchar('email', { length: 255 }).unique(),
   platformId: varchar('platform_id', { length: 255 }).unique(),
   coins: integer('coins').default(500).notNull(),
   avatarUrl: varchar('avatar_url', { length: 255 }),
@@ -17,9 +20,17 @@ export const users = pgTable('users', {
   loginStreak: integer('login_streak').default(0).notNull(),
   lastLoginDate: date('last_login_date'),
   lastSpinDate: date('last_spin_date'),
+  // --- Progression (Retention Loop) ---
+  xp: integer('xp').default(0).notNull(),
+  level: integer('level').default(1).notNull(),
+  pityCounter: integer('pity_counter').default(0).notNull(),
   referralCode: varchar('referral_code', { length: 12 }).unique(),
   referredBy: integer('referred_by'),
   referralClaimed: boolean('referral_claimed').default(false).notNull(),
+  // --- Onboarding ---
+  hasSeenTour: boolean('has_seen_tour').default(false).notNull(),
+  // --- Moderasi ---
+  banned: boolean('banned').default(false).notNull(),
 }, (table) => ({
   usernameIdx: index('username_idx').on(table.username),
   referralCodeIdx: index('referral_code_idx').on(table.referralCode),
@@ -51,6 +62,8 @@ export const masterCards = pgTable('master_cards', {
   resistance: varchar('resistance', { length: 20 }),
   illustrator: varchar('illustrator', { length: 50 }).default('AI Artist').notNull(),
   foilStyle: varchar('foil_style', { length: 30 }).default('Standard').notNull(),
+  // --- Gacha drop weight (bobot dalam rarity; 1.0 = merata seperti default) ---
+  dropWeight: doublePrecision('drop_weight').default(1.0).notNull(),
   // --- Image Position / Crop ---
   imgZoom: doublePrecision('img_zoom').default(1.0).notNull(),
   imgOffsetX: doublePrecision('img_offset_x').default(0.0).notNull(),

@@ -3,6 +3,7 @@ import { users, userMissions, userInventory, userAchievements } from './db/schem
 import { eq, and, sql } from 'drizzle-orm';
 import requireAuth from './_lib/requireAuth.js';
 import { sendError } from './_lib/errors.js';
+import { grantXp, XP_REWARDS } from './_lib/progression.js';
 
 /**
  * POST /api/daily-login
@@ -45,15 +46,22 @@ export default requireAuth(async function handler(req, res) {
 
       const rewardIdx = Math.min(newStreak - 1, STREAK_REWARDS.length - 1);
       const reward = STREAK_REWARDS[rewardIdx];
-      const newCoins = user.coins + reward;
 
-      await tx.update(users).set({
-        coins: newCoins,
+      // Grant coin secara atomik (race-safe)
+      const [updated] = await tx.update(users).set({
+        coins: sql`${users.coins} + ${reward}`,
         loginStreak: newStreak,
         lastLoginDate: today,
-      }).where(eq(users.id, req.userId));
+      }).where(eq(users.id, req.userId)).returning({ coins: users.coins });
 
-      return { alreadyClaimed: false, streak: newStreak, reward, coins: newCoins };
+      // XP retention (+ level-up/bonus)
+      const xpr = await grantXp(tx, req.userId, XP_REWARDS.daily_login);
+      const newCoins = updated.coins + (xpr.coinBonus || 0);
+
+      return {
+        alreadyClaimed: false, streak: newStreak, reward, coins: newCoins,
+        levelUp: xpr.leveledUp ? { level: xpr.newLevel, coinBonus: xpr.coinBonus } : null,
+      };
     });
 
     // Track login_daily mission

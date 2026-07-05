@@ -9,9 +9,9 @@
     :class="{ 'cursor-pointer': !props.animating }"
     @mousemove="onPointerMove"
     @mouseleave="onPointerLeave"
-    @touchstart.prevent="onTouchStartTilt"
-    @touchmove.prevent="onTouchMoveTilt"
-    @touchend.prevent="onTouchEndTilt"
+    @touchstart="onTouchStartTilt"
+    @touchmove="onTouchMoveTilt"
+    @touchend="onTouchEndTilt"
     @click="onClick"
   >
     <!-- Loading shimmer overlay -->
@@ -90,6 +90,7 @@ const props = defineProps({
   likesPerSec: { type: Number, default: 0 },
   element: { type: String, default: 'Normal' },
   mode: { type: String, default: 'full' }, // 'full' | 'mini'
+  hd: { type: Boolean, default: false }, // detail: tekstur super tajam + DPR penuh
   flipped: { type: Boolean, default: false },
   animating: { type: Boolean, default: false },
   allowZoom: { type: Boolean, default: false },
@@ -102,6 +103,8 @@ const props = defineProps({
   // Mode reveal gacha: kartu masuk menghadap belakang lalu flip sinematik
   // (god-rays untuk Legendary, bloom pulse sesuai quality tier)
   revealMode: { type: Boolean, default: false },
+  // Peluang drop gacha (%) untuk dicetak di footer kartu
+  dropRate: { type: [Number, String], default: null },
 });
 
 const emit = defineEmits(['flip-start', 'flip-complete', 'click', 'zoom-change']);
@@ -382,6 +385,7 @@ const renderedScale = ref(1.0);
 let initialPinchDist = 0;
 let initialScale = 1.0;
 let isPinching = false;
+let resizeObserver = null;
 
 // Shader uniforms
 const shaderUniforms = {
@@ -666,12 +670,15 @@ function initScene() {
 
   // Camera
   camera = new THREE.PerspectiveCamera(40, width / height, 0.1, 100);
-  camera.position.z = props.mode === 'mini' ? 8.5 : 7.5;
+  camera.position.z = props.mode === 'mini' ? 6.2 : 7.5;
 
   // Renderer — DPR di-cap sesuai quality tier
   renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
   renderer.setSize(width, height);
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, props.mode === 'mini' ? quality.dprMini : quality.dpr));
+  // HD (detail): DPR penuh (maks 3) untuk render WebGL super tajam;
+  // selain itu di-cap sesuai quality tier demi performa grid
+  const dprCap = props.hd ? 3 : (props.mode === 'mini' ? quality.dprMini : quality.dpr);
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, dprCap));
   renderer.setClearColor(0x000000, 0);
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   containerRef.value.appendChild(renderer.domElement);
@@ -826,10 +833,14 @@ function buildCardFace(image) {
     foilStyle: props.foilStyle,
     imgZoom: props.imgZoom,
     imgOffsetX: props.imgOffsetX,
-    imgOffsetY: props.imgOffsetY
-  }, image);
+    imgOffsetY: props.imgOffsetY,
+    dropRate: (props.dropRate === null || props.dropRate === '') ? null : parseFloat(props.dropRate)
+  }, image, props.hd ? 3 : null);
   const canvasTex = new THREE.CanvasTexture(canvas);
   canvasTex.colorSpace = THREE.SRGBColorSpace;
+  if (renderer) {
+    canvasTex.anisotropy = Math.min(renderer.capabilities.getMaxAnisotropy(), 16);
+  }
 
   // Back texture per rarity
   const newBackTexture = createCardBackTexture(props.rarity);
@@ -1190,9 +1201,17 @@ function animate() {
 // Pointer interaction calculations
 const tiltFactor = () => props.mode === 'mini' ? 0.4 : 0.7;
 
+let cachedRect = null;
+
 function calcTilt(clientX, clientY) {
-  const rect = containerRef.value?.getBoundingClientRect();
-  if (!rect) return;
+  let rect = cachedRect;
+  if (!rect) {
+    rect = containerRef.value?.getBoundingClientRect();
+    if (!rect) return;
+    if (isTouchTilting || isHovering) {
+      cachedRect = rect;
+    }
+  }
   markActivity();
   const x = ((clientX - rect.left) / rect.width - 0.5) * 2;
   const y = ((clientY - rect.top) / rect.height - 0.5) * 2;
@@ -1227,7 +1246,7 @@ function onTouchStartTilt(e) {
 
   // 2-finger: init pinch-to-zoom (only when allowed)
   if (e.touches.length === 2 && props.allowZoom && props.focused && props.mode !== 'mini') {
-    e.preventDefault();
+    if (e.cancelable) e.preventDefault();
     isPinching = true;
     const dx = e.touches[0].clientX - e.touches[1].clientX;
     const dy = e.touches[0].clientY - e.touches[1].clientY;
@@ -1237,7 +1256,9 @@ function onTouchStartTilt(e) {
   }
   // 1-finger: start tilt tracking + record position for tap detection
   if (e.touches.length === 1) {
+    if (e.cancelable) e.preventDefault(); // Prevent default scroll panning on touch start if cancelable
     isTouchTilting = true;
+    cachedRect = containerRef.value?.getBoundingClientRect() || null;
     touchStartPos = { x: e.touches[0].clientX, y: e.touches[0].clientY };
     calcTilt(e.touches[0].clientX, e.touches[0].clientY);
   }
@@ -1246,6 +1267,7 @@ function onTouchStartTilt(e) {
 function onTouchMoveTilt(e) {
   // 2-finger pinch-to-zoom
   if (e.touches.length === 2 && props.allowZoom && props.focused && props.mode !== 'mini') {
+    if (e.cancelable) e.preventDefault();
     if (!isPinching) {
       isPinching = true;
       const dx = e.touches[0].clientX - e.touches[1].clientX;
@@ -1268,6 +1290,7 @@ function onTouchMoveTilt(e) {
 
   // 1-finger tilt — works on ALL cards
   if (e.touches.length === 1 && !isPinching && isTouchTilting) {
+    if (e.cancelable) e.preventDefault(); // Prevent default scroll panning on drag if cancelable
     calcTilt(e.touches[0].clientX, e.touches[0].clientY);
   }
 }
@@ -1290,6 +1313,7 @@ function onTouchEndTilt(e) {
   }
   if (e.touches.length === 0) {
     isTouchTilting = false;
+    cachedRect = null; // Clear cached rect
     // Rekalibrasi baseline gyro ke orientasi HP saat ini setelah sentuhan lepas
     gyroBase = null;
     // Only reset targets if not also being hovered by mouse
@@ -1308,6 +1332,7 @@ function onTouchEndTilt(e) {
 
 function onPointerLeave() {
   isHovering = false;
+  cachedRect = null; // Clear cached rect
   targetRotX = 0;
   targetRotY = 0;
   glossX.value = 50;
@@ -1409,7 +1434,8 @@ watch(() => props.flipped, (newVal) => {
 // Watch focused prop to scale up card preview
 watch(() => props.focused, (newVal) => {
   if (newVal) {
-    cardScale.value = 1.25;
+    const isMobile = typeof window !== 'undefined' && window.innerWidth < 640;
+    cardScale.value = isMobile ? 1.65 : 2.0;
   } else {
     cardScale.value = 1.0;
   }
@@ -1434,7 +1460,8 @@ watch([
   () => props.foilStyle,
   () => props.imgZoom,
   () => props.imgOffsetX,
-  () => props.imgOffsetY
+  () => props.imgOffsetY,
+  () => props.dropRate
 ], () => {
   loadAndBuildCard();
 });
@@ -1484,6 +1511,14 @@ onMounted(() => {
       });
       intersectionObserver.observe(containerRef.value);
     }
+    
+    // Modern automatic resizing of WebGL canvas when DOM element changes size
+    if (typeof ResizeObserver !== 'undefined' && containerRef.value) {
+      resizeObserver = new ResizeObserver(() => {
+        onResize();
+      });
+      resizeObserver.observe(containerRef.value);
+    }
   });
   window.addEventListener('resize', onResize);
   document.addEventListener('visibilitychange', onVisibilityChange);
@@ -1503,6 +1538,10 @@ onBeforeUnmount(() => {
   if (gyroAttached) window.removeEventListener('deviceorientation', onDeviceOrientation);
   intersectionObserver?.disconnect();
   intersectionObserver = null;
+  if (resizeObserver) {
+    resizeObserver.disconnect();
+    resizeObserver = null;
+  }
   if (containerRef.value) {
     containerRef.value.removeEventListener('wheel', onWheel);
   }

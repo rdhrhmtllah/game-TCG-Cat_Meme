@@ -1,4 +1,5 @@
 import { ref } from 'vue';
+import { useSound } from './useSound.js';
 
 const toasts = ref([]);
 let nextId = 0;
@@ -7,6 +8,12 @@ export function useToast() {
   function show(message, type = 'info', duration = 3000) {
     const id = nextId++;
     toasts.value.push({ id, message, type, duration });
+    // SFX sesuai jenis toast (success chime / error buzz)
+    try {
+      const s = useSound();
+      if (type === 'success') s.play('success');
+      else if (type === 'error') s.play('error');
+    } catch { /* abaikan */ }
     if (duration > 0) {
       setTimeout(() => dismiss(id), duration);
     }

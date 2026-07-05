@@ -15,6 +15,21 @@ export default defineConfig({
       "/api": {
         target: "http://localhost:3000",
         changeOrigin: true,
+        secure: false,
+        ws: true,
+        configure: (proxy, options) => {
+          proxy.on('error', (err, req, res) => {
+            console.error('\n❌ Proxy Error:', err.message);
+            console.error('🔍 Pastikan API server running di http://localhost:3000');
+            console.error('💡 Jalankan: npm run dev:api\n');
+          });
+          proxy.on('proxyReq', (proxyReq, req, res) => {
+            // Log untuk debugging
+            if (process.env.DEBUG) {
+              console.log('→ Proxying:', req.method, req.url);
+            }
+          });
+        },
       },
     },
     allowedHosts: true,

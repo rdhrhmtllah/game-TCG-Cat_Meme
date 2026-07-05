@@ -18,6 +18,7 @@ export default requireAuth(async function handler(req, res) {
     const [user] = await db.select({
       id: users.id,
       username: users.username,
+      email: users.email,
       coins: users.coins,
       avatarUrl: users.avatarUrl,
       createdAt: users.createdAt,
@@ -26,6 +27,10 @@ export default requireAuth(async function handler(req, res) {
       lastLoginDate: users.lastLoginDate,
       lastSpinDate: users.lastSpinDate,
       referralCode: users.referralCode,
+      xp: users.xp,
+      level: users.level,
+      pityCounter: users.pityCounter,
+      hasSeenTour: users.hasSeenTour,
     })
       .from(users)
       .where(eq(users.id, req.userId))

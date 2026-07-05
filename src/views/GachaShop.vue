@@ -3,14 +3,18 @@
     <!-- Atmospheric background (always present) -->
     <div class="fixed inset-0 pointer-events-none z-0">
       <div class="absolute inset-0" style="background:
-        radial-gradient(ellipse 60% 40% at 50% 30%, rgba(124, 58, 237, 0.08) 0%, transparent 60%),
-        radial-gradient(ellipse 40% 30% at 80% 70%, rgba(245, 158, 11, 0.04) 0%, transparent 50%);"></div>
-      <span v-for="i in 12" :key="'bg'+i"
-        class="absolute rounded-full animate-particle-float opacity-20"
+        radial-gradient(ellipse 60% 40% at 50% 30%, rgba(124, 58, 237, 0.1) 0%, transparent 55%),
+        radial-gradient(ellipse 40% 30% at 80% 70%, rgba(245, 158, 11, 0.06) 0%, transparent 45%),
+        radial-gradient(ellipse 35% 25% at 20% 60%, rgba(248, 140, 212, 0.04) 0%, transparent 50%);"></div>
+      <div class="floating-orb floating-orb-purple" style="width: 300px; height: 300px; top: 10%; left: 60%; animation-delay: -3s;"></div>
+      <div class="floating-orb floating-orb-blue" style="width: 220px; height: 220px; bottom: 20%; left: 15%; animation-delay: -7s;"></div>
+      <span v-for="i in 14" :key="'bg'+i"
+        class="absolute rounded-full animate-particle-float"
         :style="{
           width: (1 + Math.random() * 2) + 'px', height: (1 + Math.random() * 2) + 'px',
-          background: ['#7C3AED', '#38BDF8', '#F59E0B'][i % 3],
+          background: ['#7C3AED', '#38BDF8', '#F59E0B', '#F88CD4'][i % 4],
           left: (Math.random() * 100) + '%', top: (Math.random() * 100) + '%',
+          opacity: 0.15 + Math.random() * 0.1,
           animationDelay: (i * 0.5) + 's', animationDuration: (5 + Math.random() * 4) + 's',
         }"
       />
@@ -115,6 +119,7 @@
                   :img-zoom="currentCard?.imgZoom"
                   :img-offset-x="currentCard?.imgOffsetX"
                   :img-offset-y="currentCard?.imgOffsetY"
+                  :drop-rate="playerStore.dropRateOf(currentCard?.id)"
                   mode="full"
                   reveal-mode
                   class="w-full h-full"
@@ -236,7 +241,7 @@
             <!-- Actions -->
             <div class="flex gap-3">
               <button @click="resetToIdle" class="btn-primary flex-1 py-3.5 font-display font-bold">🎴 Buka Lagi</button>
-              <router-link to="/binder" class="btn-secondary flex-1 py-3.5 font-display text-center">📒 Binder</router-link>
+              <router-link to="/binder" @click="notifyPackOpened" class="btn-secondary flex-1 py-3.5 font-display text-center">📒 Binder</router-link>
             </div>
           </div>
         </div>
@@ -248,11 +253,14 @@
 
       <!-- Header (only in idle browse) -->
       <div v-if="step === 'idle'" class="flex items-center justify-between mb-4">
-        <div>
-          <h1 class="text-xl font-display font-bold flex items-center gap-2">
-            <span class="text-2xl">🎴</span> Pack Shop
-          </h1>
-          <p class="text-muted text-xs mt-0.5">1 Pack = 5 Cards • 100 coin</p>
+        <div class="premium-header">
+          <div class="premium-header-icon text-accent">
+            <IconBase name="gacha" :size="20" />
+          </div>
+          <div>
+            <h1 class="premium-header-title">Pack Shop</h1>
+            <p class="text-muted text-xs mt-0.5">1 Pack = 5 Cards • 100 coin</p>
+          </div>
         </div>
         <CoinDisplay :amount="playerStore.coins" size="lg" />
       </div>
@@ -335,7 +343,24 @@
               <span class="text-muted">Jalankan <code class="text-accent bg-white/5 px-1 rounded">npm run db:seed</code> atau buat kartu di Admin.</span>
             </p>
             <p v-else class="text-center text-muted text-xs mb-4">{{ masterCardCount }} kartu tersedia • Putar pack untuk melihat-lihat</p>
+
+            <!-- Pity: jaminan Epic+ -->
+            <div class="w-full mb-4 glass-panel rounded-xl px-4 py-3">
+              <div class="flex items-center justify-between mb-1.5">
+                <span class="text-[11px] font-display text-epic-light flex items-center gap-1">💎 Jaminan Epic+</span>
+                <span class="text-[11px] font-display font-bold tabular-nums" :class="pityRemaining <= 5 ? 'text-legendary' : 'text-muted'">
+                  {{ pityRemaining }} pull lagi
+                </span>
+              </div>
+              <div class="w-full h-1.5 bg-white/5 rounded-full overflow-hidden">
+                <div class="h-full rounded-full transition-all duration-500"
+                  style="background: linear-gradient(90deg,#A855F7,#C084FC);"
+                  :style="{ width: (pityProgress * 100) + '%' }"></div>
+              </div>
+            </div>
+
             <button @click="startOpening" :disabled="playerStore.coins < 100 || masterCardCount === 0"
+              data-tour="open-pack"
               class="btn-primary w-full py-4 text-lg font-display relative overflow-hidden group">
               <span class="relative z-10 flex items-center justify-center gap-2">
                 <template v-if="playerStore.coins < 100">
@@ -348,8 +373,53 @@
                 </template>
               </span>
             </button>
+            <button @click="openRates" class="mt-3 text-xs font-display text-muted hover:text-white transition-colors flex items-center gap-1.5">
+              <span>📊</span> Lihat Peluang Drop
+            </button>
           </div>
         </div>
+      </Teleport>
+
+      <!-- ============ MODAL PELUANG DROP ============ -->
+      <Teleport to="body">
+        <Transition name="fade">
+          <div v-if="showRates" class="fixed inset-0 z-[70] flex items-end sm:items-center justify-center p-0 sm:p-4"
+            style="background: rgba(4,6,15,0.85);" @click.self="showRates = false">
+            <div class="w-full sm:max-w-md glass-panel-strong rounded-t-2xl sm:rounded-2xl overflow-hidden flex flex-col animate-slide-up" style="max-height: 85vh;">
+              <div class="flex items-center justify-between px-5 py-4 border-b border-white/5 flex-shrink-0">
+                <div>
+                  <h3 class="font-display font-bold text-white">📊 Peluang Drop</h3>
+                  <p class="text-[11px] text-muted">Peluang tiap kartu muncul saat buka pack</p>
+                </div>
+                <button @click="showRates = false" class="text-muted hover:text-white p-1.5 glass-panel rounded-full">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                </button>
+              </div>
+              <div class="overflow-y-auto scrollbar-thin px-3 py-3">
+                <p v-if="ratesLoading" class="text-center text-muted text-sm py-8">⏳ Memuat peluang...</p>
+                <template v-else v-for="tier in ratesByRarity" :key="tier.rarity">
+                  <div v-if="tier.cards.length" class="mb-3">
+                    <div class="flex items-center justify-between px-2 mb-1.5">
+                      <span class="rarity-badge text-[9px]" :class="'rarity-' + tier.rarity.toLowerCase()">{{ tier.rarity }}</span>
+                      <span class="text-[11px] text-muted font-display">Total tier {{ tier.base }}%</span>
+                    </div>
+                    <div v-for="c in tier.cards" :key="c.id"
+                      class="flex items-center gap-3 px-2 py-1.5 rounded-lg hover:bg-white/5">
+                      <div class="w-6 h-8 rounded overflow-hidden flex-shrink-0 bg-surface-card">
+                        <img v-if="c.imageUrl" :src="c.imageUrl" class="w-full h-full object-cover" />
+                      </div>
+                      <span class="flex-1 text-sm font-display truncate">{{ c.name }}</span>
+                      <span class="text-sm font-display font-bold tabular-nums"
+                        :class="'text-' + tier.rarity.toLowerCase() + '-light'">
+                        {{ c.dropRate < 1 ? c.dropRate.toFixed(2) : c.dropRate.toFixed(1) }}%
+                      </span>
+                    </div>
+                  </div>
+                </template>
+              </div>
+            </div>
+          </div>
+        </Transition>
       </Teleport>
 
       <!-- Coin warning -->
@@ -362,23 +432,32 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { useAuthStore } from '@/stores/auth.js';
 import { usePlayerStore } from '@/stores/player.js';
 import { useToast } from '@/composables/useToast.js';
+import { useSound } from '@/composables/useSound.js';
+import { PITY_THRESHOLD } from '@/utils/progression.js';
 import CoinDisplay from '@/components/CoinDisplay.vue';
 import Card3D from '@/components/Card3D.vue';
 import GachaPack from '@/components/GachaPack.vue';
+import IconBase from '@/components/IconBase.vue';
 
 const authStore = useAuthStore();
 const playerStore = usePlayerStore();
 const toast = useToast();
+const sound = useSound();
 
 // State machine: idle → selecting → tearing → transition → revealing → summary
 const step = ref('idle');
 
 // Pack tampil fullscreen saat memilih & merobek (bukan di kotak kecil)
 const isImmersive = computed(() => step.value === 'selecting' || step.value === 'tearing');
+
+// Pity: jaminan Epic+ tiap PITY_THRESHOLD pull
+const pityCounter = computed(() => authStore.user?.pityCounter || 0);
+const pityRemaining = computed(() => Math.max(0, PITY_THRESHOLD - pityCounter.value));
+const pityProgress = computed(() => Math.min(1, pityCounter.value / PITY_THRESHOLD));
 const revealedCards = ref([]);
 const highestRarity = ref('Common');
 const currentRevealIndex = ref(0);
@@ -454,15 +533,20 @@ function startOpening() {
   if (playerStore.coins < 100) return;
   // Transisi pack BERPUTAR (carousel) — user memilih pack-nya sendiri
   step.value = 'selecting';
+  sound.pauseMusic();      // OST berhenti selama sesi gacha
+  sound.play('gachaWait'); // musik tunggu saat pack berputar
 }
 
 // Batal memilih pack → kembali ke shop idle
 function cancelSelecting() {
+  sound.stop('gachaWait');
   step.value = 'idle';
 }
 
 // Pack pilihan sudah fokus ke tengah → masuk mode sobek + panggil API
 function onPackSelected() {
+  sound.stop('gachaWait'); // pack terpilih → hentikan musik tunggu
+  sound.play('select');
   step.value = 'tearing';
   tearAnimating.value = false;
   tearAnimationFinished.value = false;
@@ -538,6 +622,12 @@ async function proceedToTransition() {
   // Show rarity transition effect
   step.value = 'transition';
 
+  // SFX + haptic sesuai rarity tertinggi
+  const rk = (highestRarity.value || 'Common');
+  sound.play('reveal' + rk);
+  if (rk === 'Legendary') sound.haptic([60, 40, 80, 40, 120]);
+  else if (rk === 'Epic') sound.haptic([40, 30, 60]);
+
   // Duration based on rarity
   const transitionMs = {
     Common: 1200,
@@ -574,13 +664,14 @@ async function proceedToTransition() {
 function nextCard() {
   if (currentRevealIndex.value < revealedCards.value.length - 1) {
     currentRevealIndex.value++;
+    sound.play('cardFlip');
   } else {
     skipToSummary();
   }
 }
 
 function prevCard() {
-  if (currentRevealIndex.value > 0) currentRevealIndex.value--;
+  if (currentRevealIndex.value > 0) { currentRevealIndex.value--; sound.play('cardFlip'); }
 }
 
 function goToCard(idx) {
@@ -604,7 +695,16 @@ function onRevealTouchEnd(e) {
   }
 }
 
+// Beritahu onboarding tour bahwa pack sudah dibuka (dipakai dua jalur keluar summary)
+function notifyPackOpened() {
+  window.dispatchEvent(new CustomEvent('tour:pack-opened'));
+}
+
 function resetToIdle() {
+  // Beritahu tour bila user benar-benar sudah membuka pack (ada kartu terungkap)
+  if (revealedCards.value.length > 0) notifyPackOpened();
+  sound.stop('gachaWait');  // pengaman: pastikan musik tunggu berhenti
+  sound.resumeMusic();      // OST kembali menyala di menu
   step.value = 'idle';
   revealedCards.value = [];
   currentRevealIndex.value = 0;
@@ -616,6 +716,38 @@ function resetToIdle() {
 
 const masterCardCount = ref(0);
 const checkingCards = ref(true);
+
+// ── Modal Peluang Drop ──
+const showRates = ref(false);
+const ratesLoading = ref(false);
+const ratesCards = ref([]);
+const ratesChances = ref({ Legendary: 2, Epic: 8, Rare: 20, Common: 70 });
+const RARITY_TIER_ORDER = ['Legendary', 'Epic', 'Rare', 'Common'];
+
+const ratesByRarity = computed(() =>
+  RARITY_TIER_ORDER.map(rarity => ({
+    rarity,
+    base: ratesChances.value[rarity] ?? 0,
+    cards: ratesCards.value
+      .filter(c => c.rarity === rarity)
+      .sort((a, b) => b.dropRate - a.dropRate),
+  }))
+);
+
+async function openRates() {
+  showRates.value = true;
+  if (ratesCards.value.length) return; // sudah dimuat
+  ratesLoading.value = true;
+  try {
+    const res = await fetch('/api/gacha-rates');
+    const data = await res.json();
+    if (res.ok) {
+      ratesCards.value = data.cards || [];
+      if (data.rarityChances) ratesChances.value = data.rarityChances;
+    }
+  } catch (e) { /* biarkan kosong */ }
+  finally { ratesLoading.value = false; }
+}
 
 async function checkCardAvailability() {
   checkingCards.value = true;
@@ -635,6 +767,13 @@ async function checkCardAvailability() {
 onMounted(async () => {
   await authStore.fetchMe();
   await checkCardAvailability();
+  playerStore.fetchDropRates();
+});
+
+// Keluar halaman di tengah sesi gacha → hentikan musik tunggu & kembalikan OST
+onUnmounted(() => {
+  sound.stop('gachaWait');
+  sound.resumeMusic();
 });
 </script>
 
@@ -679,9 +818,9 @@ onMounted(async () => {
 .gacha-rarity-word {
   font-family: 'Cinzel', 'Outfit', serif;
   font-weight: 900;
-  font-size: clamp(2.8rem, 14vw, 5.5rem);
+  font-size: clamp(1.8rem, 9.5vw, 5.5rem);
   line-height: 1;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.06em;
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;

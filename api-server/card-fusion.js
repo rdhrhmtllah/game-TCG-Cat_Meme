@@ -1,8 +1,10 @@
 import { db } from './db/client.js';
 import { users, userInventory, masterCards } from './db/schema.js';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, sql } from 'drizzle-orm';
 import requireAuth from './_lib/requireAuth.js';
 import { sendError } from './_lib/errors.js';
+import { incrementMission } from './missions.js';
+import { grantXp, XP_REWARDS } from './_lib/progression.js';
 
 /**
  * POST /api/card-fusion
@@ -77,20 +79,27 @@ export default requireAuth(async function handler(req, res) {
         });
       }
 
-      // Add bonus coins
-      const [user] = await tx.select({ coins: users.coins }).from(users)
-        .where(eq(users.id, req.userId));
-      const newCoins = user.coins + fusion.bonus;
-      await tx.update(users).set({ coins: newCoins }).where(eq(users.id, req.userId));
+      // Add bonus coins (atomik)
+      const [updated] = await tx.update(users)
+        .set({ coins: sql`${users.coins} + ${fusion.bonus}` })
+        .where(eq(users.id, req.userId))
+        .returning({ coins: users.coins });
+
+      // XP retention + level-up
+      const xpr = await grantXp(tx, req.userId, XP_REWARDS.fusion);
 
       return {
         fusedCard: card,
         fusedQuantity: 3,
         resultCard: { ...newCard, isNew },
         bonusCoins: fusion.bonus,
-        coins: newCoins,
+        coins: updated.coins + (xpr.coinBonus || 0),
+        levelUp: xpr.leveledUp ? { level: xpr.newLevel, coinBonus: xpr.coinBonus } : null,
       };
     });
+
+    // Quest: fusion kartu
+    incrementMission(req.userId, 'fuse_card').catch(() => {});
 
     return res.status(200).json(result);
   } catch (err) {

@@ -196,6 +196,7 @@ async function handleCreateCard(req, res) {
       resistance: data.resistance || null,
       illustrator: data.illustrator || 'AI Artist',
       foilStyle: data.foilStyle || 'Standard',
+      dropWeight: data.dropWeight ?? 1.0,
       imgZoom: data.imgZoom ?? 1.0,
       imgOffsetX: data.imgOffsetX ?? 0.0,
       imgOffsetY: data.imgOffsetY ?? 0.0,

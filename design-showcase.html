@@ -1,0 +1,474 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MemeCats Design System Showcase</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="./src/assets/css/tokens.css">
+  <link rel="stylesheet" href="./src/assets/css/main.css">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    
+    body {
+      background: var(--color-surface-base);
+      background-image:
+        radial-gradient(ellipse 80% 60% at 50% 0%, rgba(124, 58, 237, 0.06) 0%, transparent 60%),
+        radial-gradient(ellipse 60% 40% at 80% 100%, rgba(56, 189, 248, 0.04) 0%, transparent 50%);
+      color: var(--color-text-primary);
+      font-family: var(--font-family-primary);
+      padding: var(--space-7) var(--space-3);
+      min-height: 100vh;
+    }
+    
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+    
+    .showcase-header {
+      text-align: center;
+      margin-bottom: var(--space-7);
+    }
+    
+    .showcase-title {
+      font-size: var(--font-size-3xl);
+      font-family: var(--font-family-display);
+      background: linear-gradient(135deg, var(--color-accent-primary), var(--color-accent-primary-hover));
+      background-clip: text;
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      margin-bottom: var(--space-2);
+    }
+    
+    .showcase-subtitle {
+      font-size: var(--font-size-lg);
+      color: var(--color-text-secondary);
+    }
+    
+    .section {
+      margin-bottom: var(--space-7);
+    }
+    
+    .section-title {
+      font-size: var(--font-size-2xl);
+      margin-bottom: var(--space-3);
+      color: var(--color-text-primary);
+    }
+    
+    .section-desc {
+      font-size: var(--font-size-base);
+      color: var(--color-text-secondary);
+      margin-bottom: var(--space-4);
+      line-height: var(--line-height-relaxed);
+    }
+    
+    .component-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: var(--space-3);
+    }
+    
+    .component-item {
+      padding: var(--space-4);
+    }
+    
+    .component-label {
+      font-size: var(--font-size-sm);
+      color: var(--color-text-tertiary);
+      margin-bottom: var(--space-2);
+      font-family: var(--font-family-display);
+      text-transform: uppercase;
+      letter-spacing: var(--letter-spacing-wider);
+    }
+    
+    .color-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+      gap: var(--space-2);
+    }
+    
+    .color-swatch {
+      height: 80px;
+      border-radius: var(--radius-md);
+      display: flex;
+      align-items: flex-end;
+      padding: var(--space-2);
+      border: 1px solid var(--color-border-subtle);
+    }
+    
+    .color-name {
+      font-size: var(--font-size-xs);
+      font-family: var(--font-family-mono);
+      color: var(--color-text-primary);
+      background: var(--glass-bg-strong);
+      padding: var(--space-xs) var(--space-sm);
+      border-radius: var(--radius-xs);
+      backdrop-filter: var(--glass-blur-medium);
+    }
+    
+    .type-sample {
+      margin-bottom: var(--space-3);
+    }
+    
+    .button-group {
+      display: flex;
+      gap: var(--space-2);
+      flex-wrap: wrap;
+      align-items: center;
+    }
+    
+    .rarity-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+      gap: var(--space-3);
+    }
+    
+    .card-demo {
+      aspect-ratio: 3 / 4.2;
+      border-radius: var(--radius-xl);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: var(--font-size-xl);
+      font-weight: var(--font-weight-bold);
+      position: relative;
+      overflow: hidden;
+    }
+    
+    .toast-demo-container {
+      position: relative;
+      min-height: 200px;
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-sm);
+      align-items: flex-end;
+    }
+    
+    .input-demo {
+      max-width: 400px;
+    }
+    
+    code {
+      font-family: var(--font-family-mono);
+      font-size: var(--font-size-sm);
+      background: var(--glass-bg-medium);
+      padding: var(--space-xs) var(--space-sm);
+      border-radius: var(--radius-xs);
+      color: var(--color-rarity-rare);
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header class="showcase-header">
+      <h1 class="showcase-title">MemeCats</h1>
+      <p class="showcase-subtitle">Premium Design System Showcase</p>
+    </header>
+
+    <!-- Typography Section -->
+    <section class="section">
+      <h2 class="section-title">Typography</h2>
+      <p class="section-desc">Our type scale follows T.RICKS guidelines with semantic sizing and DM Sans/Outfit fonts.</p>
+      
+      <div class="glass-panel component-item">
+        <div class="type-sample">
+          <h1>Heading 1 — Hero Title</h1>
+          <code>--font-size-3xl (86.8px)</code>
+        </div>
+        <div class="type-sample">
+          <h2>Heading 2 — Page Title</h2>
+          <code>--font-size-2xl (32.2px)</code>
+        </div>
+        <div class="type-sample">
+          <h3>Heading 3 — Section Title</h3>
+          <code>--font-size-xl (23.8px)</code>
+        </div>
+        <div class="type-sample">
+          <h4>Heading 4 — Card Title</h4>
+          <code>--font-size-lg (19.6px)</code>
+        </div>
+        <div class="type-sample">
+          <p style="font-size: var(--font-size-base);">Body Text — This is the default readable text for all content. Optimized for WCAG 2.2 AA contrast.</p>
+          <code>--font-size-base (16px)</code>
+        </div>
+        <div class="type-sample">
+          <p style="font-size: var(--font-size-sm); color: var(--color-text-secondary);">Secondary Text — Used for muted labels and descriptions.</p>
+          <code>--font-size-sm (15.4px)</code>
+        </div>
+        <div class="type-sample">
+          <p style="font-size: var(--font-size-xs); color: var(--color-text-tertiary);">Small Text — For badges, footnotes, and metadata.</p>
+          <code>--font-size-xs (14px)</code>
+        </div>
+      </div>
+    </section>
+
+    <!-- Colors Section -->
+    <section class="section">
+      <h2 class="section-title">Color System</h2>
+      <p class="section-desc">All colors use semantic tokens to ensure consistency and WCAG 2.2 AA compliance.</p>
+      
+      <div class="glass-panel component-item">
+        <p class="component-label">Text Colors</p>
+        <div class="color-grid">
+          <div class="color-swatch" style="background: var(--color-text-primary);">
+            <span class="color-name">primary</span>
+          </div>
+          <div class="color-swatch" style="background: var(--color-text-secondary);">
+            <span class="color-name">secondary</span>
+          </div>
+          <div class="color-swatch" style="background: var(--color-text-tertiary);">
+            <span class="color-name">tertiary</span>
+          </div>
+          <div class="color-swatch" style="background: var(--color-text-accent);">
+            <span class="color-name">accent</span>
+          </div>
+        </div>
+
+        <p class="component-label" style="margin-top: var(--space-4);">Surface Colors</p>
+        <div class="color-grid">
+          <div class="color-swatch" style="background: var(--color-surface-base); border: 1px solid var(--color-border-default);">
+            <span class="color-name">base</span>
+          </div>
+          <div class="color-swatch" style="background: var(--color-surface-elevated);">
+            <span class="color-name">elevated</span>
+          </div>
+          <div class="color-swatch" style="background: var(--color-surface-strong);">
+            <span class="color-name">strong</span>
+          </div>
+          <div class="color-swatch" style="background: var(--color-surface-overlay);">
+            <span class="color-name">overlay</span>
+          </div>
+        </div>
+
+        <p class="component-label" style="margin-top: var(--space-4);">Rarity Colors</p>
+        <div class="color-grid">
+          <div class="color-swatch" style="background: var(--color-rarity-common);">
+            <span class="color-name">common</span>
+          </div>
+          <div class="color-swatch" style="background: var(--color-rarity-rare);">
+            <span class="color-name">rare</span>
+          </div>
+          <div class="color-swatch" style="background: var(--color-rarity-epic);">
+            <span class="color-name">epic</span>
+          </div>
+          <div class="color-swatch" style="background: var(--color-rarity-legendary);">
+            <span class="color-name">legendary</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Buttons Section -->
+    <section class="section">
+      <h2 class="section-title">Buttons</h2>
+      <p class="section-desc">Buttons with semantic states, keyboard accessibility, and touch-optimized feedback.</p>
+      
+      <div class="glass-panel component-item">
+        <p class="component-label">Primary Buttons</p>
+        <div class="button-group">
+          <button class="btn-primary">Primary Action</button>
+          <button class="btn-primary btn-sm">Small</button>
+          <button class="btn-primary btn-lg">Large Button</button>
+          <button class="btn-primary" disabled>Disabled</button>
+        </div>
+
+        <p class="component-label" style="margin-top: var(--space-4);">Secondary Buttons</p>
+        <div class="button-group">
+          <button class="btn-secondary">Secondary Action</button>
+          <button class="btn-secondary btn-sm">Small</button>
+          <button class="btn-secondary" disabled>Disabled</button>
+        </div>
+
+        <p class="component-label" style="margin-top: var(--space-4);">Danger Buttons</p>
+        <div class="button-group">
+          <button class="btn-danger">Delete</button>
+          <button class="btn-danger btn-sm">Remove</button>
+          <button class="btn-danger" disabled>Disabled</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Glass Panels Section -->
+    <section class="section">
+      <h2 class="section-title">Glass Panels</h2>
+      <p class="section-desc">Premium glassmorphism effects with varying opacity and blur levels.</p>
+      
+      <div class="component-grid">
+        <div class="glass-panel" style="padding: var(--space-4);">
+          <p class="component-label">Medium Glass Panel</p>
+          <p>Standard glass effect with 70% opacity and 12px blur. Perfect for cards and content containers.</p>
+          <code>.glass-panel</code>
+        </div>
+        <div class="glass-panel-strong" style="padding: var(--space-4);">
+          <p class="component-label">Strong Glass Panel</p>
+          <p>Enhanced glass with 85% opacity and 20px blur. Ideal for navigation and prominent UI elements.</p>
+          <code>.glass-panel-strong</code>
+        </div>
+      </div>
+    </section>
+
+    <!-- Inputs Section -->
+    <section class="section">
+      <h2 class="section-title">Form Inputs</h2>
+      <p class="section-desc">Premium inputs with focus states, validation, and accessibility labels.</p>
+      
+      <div class="glass-panel component-item">
+        <div class="input-demo">
+          <label for="demo-input-1" style="display: block; margin-bottom: var(--space-sm); font-weight: var(--font-weight-semibold);">Username</label>
+          <input id="demo-input-1" type="text" class="input-premium" placeholder="Enter username" />
+        </div>
+
+        <div class="input-demo" style="margin-top: var(--space-3);">
+          <label for="demo-input-2" style="display: block; margin-bottom: var(--space-sm); font-weight: var(--font-weight-semibold);">Error State</label>
+          <input id="demo-input-2" type="email" class="input-premium input-error" placeholder="invalid@email" value="invalid" />
+          <p style="margin-top: var(--space-sm); font-size: var(--font-size-sm); color: var(--color-error-light);">Please enter a valid email address</p>
+        </div>
+
+        <div class="input-demo" style="margin-top: var(--space-3);">
+          <label for="demo-input-3" style="display: block; margin-bottom: var(--space-sm); font-weight: var(--font-weight-semibold);">Success State</label>
+          <input id="demo-input-3" type="text" class="input-premium input-success" placeholder="Valid input" value="success@example.com" />
+        </div>
+
+        <div class="input-demo" style="margin-top: var(--space-3);">
+          <label for="demo-input-4" style="display: block; margin-bottom: var(--space-sm); font-weight: var(--font-weight-semibold);">Disabled State</label>
+          <input id="demo-input-4" type="text" class="input-premium" placeholder="Cannot edit" disabled />
+        </div>
+      </div>
+    </section>
+
+    <!-- Card Frames Section -->
+    <section class="section">
+      <h2 class="section-title">Card Frames by Rarity</h2>
+      <p class="section-desc">TCG-inspired card frames with rarity-specific glows and animations.</p>
+      
+      <div class="rarity-grid">
+        <div class="glass-panel component-item">
+          <p class="component-label">Common</p>
+          <div class="card-demo card-frame-common card-hover rarity-glow-common">
+            <span>COMMON</span>
+          </div>
+        </div>
+        <div class="glass-panel component-item">
+          <p class="component-label">Rare</p>
+          <div class="card-demo card-frame-rare card-hover rarity-glow-rare">
+            <span style="color: var(--color-rarity-rare);">RARE</span>
+          </div>
+        </div>
+        <div class="glass-panel component-item">
+          <p class="component-label">Epic</p>
+          <div class="card-demo card-frame-epic card-hover rarity-glow-epic">
+            <span style="color: var(--color-rarity-epic);">EPIC</span>
+            <div class="holo-overlay"></div>
+          </div>
+        </div>
+        <div class="glass-panel component-item">
+          <p class="component-label">Legendary</p>
+          <div class="card-demo card-frame-legendary card-hover rarity-glow-legendary energy-border">
+            <span style="color: var(--color-rarity-legendary);">LEGENDARY</span>
+            <div class="holo-overlay"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Toasts Section -->
+    <section class="section">
+      <h2 class="section-title">Toast Notifications</h2>
+      <p class="section-desc">Accessible notifications with clear semantic states and animations.</p>
+      
+      <div class="glass-panel component-item">
+        <div class="toast-demo-container">
+          <div class="toast toast-success">✓ Successfully saved your changes</div>
+          <div class="toast toast-error">✕ Failed to connect to server</div>
+          <div class="toast toast-info">ℹ New update available</div>
+          <div class="toast toast-warning">⚠ Your session will expire soon</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Rarity Badges Section -->
+    <section class="section">
+      <h2 class="section-title">Rarity Badges</h2>
+      <p class="section-desc">Premium gradient badges for card rarity indicators.</p>
+      
+      <div class="glass-panel component-item">
+        <div class="button-group">
+          <span class="rarity-badge rarity-common">Common</span>
+          <span class="rarity-badge rarity-rare">Rare</span>
+          <span class="rarity-badge rarity-epic">Epic</span>
+          <span class="rarity-badge rarity-legendary">Legendary</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- Spacing Section -->
+    <section class="section">
+      <h2 class="section-title">Spacing Scale</h2>
+      <p class="section-desc">T.RICKS semantic spacing tokens for consistent layouts.</p>
+      
+      <div class="glass-panel component-item">
+        <div style="display: flex; flex-direction: column; gap: var(--space-2);">
+          <div style="display: flex; align-items: center; gap: var(--space-3);">
+            <div style="height: 20px; background: var(--color-accent-primary); border-radius: var(--radius-xs); width: var(--space-1);"></div>
+            <code>--space-1: 5.6px</code>
+          </div>
+          <div style="display: flex; align-items: center; gap: var(--space-3);">
+            <div style="height: 20px; background: var(--color-accent-primary); border-radius: var(--radius-xs); width: var(--space-2);"></div>
+            <code>--space-2: 14px</code>
+          </div>
+          <div style="display: flex; align-items: center; gap: var(--space-3);">
+            <div style="height: 20px; background: var(--color-accent-primary); border-radius: var(--radius-xs); width: var(--space-3);"></div>
+            <code>--space-3: 28px</code>
+          </div>
+          <div style="display: flex; align-items: center; gap: var(--space-3);">
+            <div style="height: 20px; background: var(--color-accent-primary); border-radius: var(--radius-xs); width: var(--space-4);"></div>
+            <code>--space-4: 30.8px</code>
+          </div>
+          <div style="display: flex; align-items: center; gap: var(--space-3);">
+            <div style="height: 20px; background: var(--color-accent-primary); border-radius: var(--radius-xs); width: var(--space-5);"></div>
+            <code>--space-5: 36.4px</code>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <footer style="text-align: center; padding: var(--space-7) 0; color: var(--color-text-tertiary);">
+      <p>MemeCats Premium Design System v2.0</p>
+      <p style="margin-top: var(--space-sm); font-size: var(--font-size-sm);">Built with T.RICKS guidelines • WCAG 2.2 AA Compliant</p>
+    </footer>
+  </div>
+
+  <script>
+    // Add interactive hover effects to cards
+    document.querySelectorAll('.card-hover').forEach(card => {
+      card.addEventListener('mousemove', (e) => {
+        const rect = card.getBoundingClientRect();
+        const x = ((e.clientX - rect.left) / rect.width) * 100;
+        const y = ((e.clientY - rect.top) / rect.height) * 100;
+        card.style.setProperty('--spot-x', `${x}%`);
+        card.style.setProperty('--spot-y', `${y}%`);
+      });
+    });
+
+    // Toast demo: Add click to dismiss
+    document.querySelectorAll('.toast').forEach(toast => {
+      toast.addEventListener('click', () => {
+        toast.style.opacity = '0';
+        toast.style.transform = 'translateX(2rem) scale(0.9)';
+        setTimeout(() => {
+          toast.style.opacity = '';
+          toast.style.transform = '';
+        }, 300);
+      });
+    });
+
+    console.log('%c MemeCats Design System ', 'background: linear-gradient(135deg, #7C3AED, #8B5CF6); color: white; padding: 10px 20px; border-radius: 8px; font-size: 14px; font-weight: bold;');
+    console.log('Design tokens loaded ✓');
+    console.log('WCAG 2.2 AA compliant ✓');
+    console.log('T.RICKS guidelines applied ✓');
+  </script>
+</body>
+</html>

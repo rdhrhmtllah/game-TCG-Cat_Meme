@@ -4,6 +4,8 @@ import { eq, and, or, ne, isNull, sql } from 'drizzle-orm';
 import requireAuth from './_lib/requireAuth.js';
 import { sendError } from './_lib/errors.js';
 import { checkRateLimit } from './_lib/rateLimit.js';
+import { incrementMission } from './missions.js';
+import { grantXp, XP_REWARDS } from './_lib/progression.js';
 
 /**
  * POST /api/spin-wheel
@@ -78,11 +80,20 @@ export default requireAuth(async function handler(req, res) {
         throw { status: 400, code: 'ALREADY_SPUN', message: 'Kamu sudah spin hari ini! Coba lagi besok.' };
       }
 
+      // XP retention + quest
+      const xpr = await grantXp(tx, req.userId, XP_REWARDS.spin);
+
       // Determine prize index for wheel animation
       const prizeIndex = PRIZES.findIndex(p => p.amount === prize.amount);
 
-      return { prize, prizeIndex, coins: updated.coins };
+      return {
+        prize, prizeIndex, coins: updated.coins + (xpr.coinBonus || 0),
+        levelUp: xpr.leveledUp ? { level: xpr.newLevel, coinBonus: xpr.coinBonus } : null,
+      };
     });
+
+    // Quest: spin hari ini
+    incrementMission(req.userId, 'spin_today').catch(() => {});
 
     return res.status(200).json(result);
   } catch (err) {

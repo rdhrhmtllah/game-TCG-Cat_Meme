@@ -5,20 +5,33 @@ import requireAuth from './_lib/requireAuth.js';
 import { sendError, logError } from './_lib/errors.js';
 import { checkRateLimit } from './_lib/rateLimit.js';
 import { incrementMission } from './missions.js';
+import { grantXp, XP_REWARDS } from './_lib/progression.js';
 
 // ── Yield Constants ──────────────────────────────────────────
-const MAX_IDLE_SECONDS = 86400;       // 24 jam (naik dari 43200)
+const MAX_IDLE_SECONDS = 86400;       // 24 jam
 const COOLDOWN_SECONDS = 10;         // cooldown antar klaim
 const STREAK_MAX_DAYS = 14;          // max streak untuk multiplier
 const STREAK_BONUS_PER_DAY = 0.05;   // +5% per hari streak
 const COLLECTION_BONUS_PER_CARD = 0.03; // +0.03 likes/sec per kartu unik
 const SYNERGY_BONUS_THRESHOLD = 3;   // minimal kartu element sama
 const SYNERGY_BONUS_MULTIPLIER = 1.10; // +10% multiplier
+// Konversi ekonomi: "likes" adalah metrik engagement (bisa jutaan), lalu
+// dikonversi ke coin dengan rate kecil supaya nilainya manusiawi & tidak
+// merusak ekonomi. 2500 likes = 1 coin.
+// Rate efektif dibatasi MAX_EFFECTIVE_RATE agar total harian ter-cap ~3.000
+// coin TANPA bisa diakali klaim sering (batas di rate, bukan di total).
+// → 5 Common ~138/hari, 5 Epic ~1.100/hari, 5 Legendary ~2.600/hari,
+//   whale (mult maks) mentok ~3.000/hari.
+// PENTING: LIKES_PER_COIN & MAX_EFFECTIVE_RATE harus sama dengan
+// src/stores/player.js
+const LIKES_PER_COIN = 2500;
+const MAX_EFFECTIVE_RATE = 87; // likes/dtk → 87×86400/2500 ≈ 3.006 coin/24 jam
 
 /**
  * POST /api/claim-idle
  * JWT required. Klaim koin idle dari showcase + collection + streak + synergy.
- * Formula: (showcaseLikes + collectionBonus) × streakMult × synergyMult × waktu
+ * likesEfektif = (showcaseLikes + collectionBonus) × streakMult × synergyMult
+ * coin = floor(likesEfektif × detik / LIKES_PER_COIN)
  */
 export default requireAuth(async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -106,20 +119,38 @@ export default requireAuth(async function handler(req, res) {
       const synergyMultiplier = hasSynergy ? SYNERGY_BONUS_MULTIPLIER : 1.0;
 
       // ── 8. Hitung Effective Rate & Earnings ─────────────────
+      // effectiveRate = likes/detik efektif (metrik engagement)
       const effectiveRate = (baseShowcaseRate + collectionBonus)
         * streakMultiplier
         * synergyMultiplier;
 
-      const coinsEarned = Math.floor(cappedSeconds * effectiveRate);
+      // Rate untuk konversi coin dibatasi (cap harian anti-eksploit)
+      const payoutRate = Math.min(effectiveRate, MAX_EFFECTIVE_RATE);
 
-      // ── 9. Update user ─────────────────────────────────────
-      const [updatedUser] = await tx.update(users)
-        .set({
-          coins: sql`coins + ${coinsEarned}`,
-          lastClaimedAt: sql`NOW()`,
-        })
-        .where(eq(users.id, req.userId))
-        .returning({ coins: users.coins });
+      // Akumulasi likes lalu konversi ke coin dengan rate kecil
+      const totalLikes = cappedSeconds * payoutRate;
+      const coinsEarned = Math.floor(totalLikes / LIKES_PER_COIN);
+      const coinsPerHour = (payoutRate * 3600) / LIKES_PER_COIN;
+
+      // ── 9. Update user (skip write bila 0 coin) ─────────────
+      // lastClaimedAt HANYA di-reset kalau benar ada coin diklaim, supaya
+      // klaim "kosong" (rate 0 / baru saja klaim) tidak menghanguskan waktu
+      let totalCurrentCoins = user.coins;
+      let levelUp = null;
+      if (coinsEarned > 0) {
+        const [updatedUser] = await tx.update(users)
+          .set({
+            coins: sql`coins + ${coinsEarned}`,
+            lastClaimedAt: sql`NOW()`,
+          })
+          .where(eq(users.id, req.userId))
+          .returning({ coins: users.coins });
+        totalCurrentCoins = updatedUser.coins;
+        // XP retention (menangani level-up + bonus coin)
+        const xpr = await grantXp(tx, req.userId, XP_REWARDS.claim_idle);
+        totalCurrentCoins += xpr.coinBonus || 0;
+        if (xpr.leveledUp) levelUp = { level: xpr.newLevel, coinBonus: xpr.coinBonus };
+      }
 
       // ── 10. Return result ──────────────────────────────────
       const breakdown = {
@@ -131,13 +162,17 @@ export default requireAuth(async function handler(req, res) {
         loginStreak: user.loginStreak || 0,
         secondsElapsed: cappedSeconds,
         maxCapSeconds: MAX_IDLE_SECONDS,
+        coinsPerHour: parseFloat(coinsPerHour.toFixed(2)),
+        likesPerCoin: LIKES_PER_COIN,
       };
 
       return {
         coinsEarned,
-        totalCurrentCoins: updatedUser[0].coins,
+        totalCurrentCoins,
         effectiveRate: parseFloat(effectiveRate.toFixed(3)),
+        coinsPerHour: parseFloat(coinsPerHour.toFixed(2)),
         breakdown,
+        levelUp,
       };
     });
 

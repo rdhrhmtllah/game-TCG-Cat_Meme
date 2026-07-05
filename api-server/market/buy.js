@@ -5,6 +5,7 @@ import requireAuth from '../_lib/requireAuth.js';
 import { marketBuySchema } from '../_lib/schemas.js';
 import { sendError, logError } from '../_lib/errors.js';
 import { checkRateLimit } from '../_lib/rateLimit.js';
+import { incrementMission } from '../missions.js';
 
 const SYBIL_LOCK_HOURS = 72;
 const TAX_RATE = 0.05; // 5% pajak marketplace
@@ -157,6 +158,8 @@ export default requireAuth(async function handler(req, res) {
         tax,
       };
     });
+
+    incrementMission(req.userId, 'buy_market').catch(() => {});
 
     return res.status(200).json({
       message: 'Kartu berhasil dibeli!',

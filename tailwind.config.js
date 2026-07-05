@@ -49,8 +49,9 @@ export default {
       },
 
       fontFamily: {
-        display: ['Outfit', 'system-ui', '-apple-system', 'sans-serif'],
-        sans: ['Inter', 'system-ui', '-apple-system', 'sans-serif'],
+        'dm-sans': ['DM Sans', 'Inter', 'system-ui', '-apple-system', 'sans-serif'],
+        display: ['Outfit', 'DM Sans', 'system-ui', '-apple-system', 'sans-serif'],
+        sans: ['DM Sans', 'Inter', 'system-ui', '-apple-system', 'sans-serif'],
       },
 
       spacing: {

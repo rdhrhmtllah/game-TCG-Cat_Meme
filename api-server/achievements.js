@@ -3,6 +3,7 @@ import { users, userAchievements, userInventory } from './db/schema.js';
 import { eq, and, count, sql } from 'drizzle-orm';
 import requireAuth from './_lib/requireAuth.js';
 import { sendError } from './_lib/errors.js';
+import { grantXp, XP_REWARDS } from './_lib/progression.js';
 
 /**
  * GET /api/achievements — Get all achievements + user's claim status
@@ -109,13 +110,20 @@ export default requireAuth(async function handler(req, res) {
         const eligible = await checkCondition(req.userId, ach.condition);
         if (!eligible) throw { status: 400, code: 'NOT_ELIGIBLE', message: 'Syarat achievement belum terpenuhi.' };
 
-        // Claim
+        // Claim (grant coin atomik)
         await tx.insert(userAchievements).values({ userId: req.userId, achievementKey });
-        const [user] = await tx.select({ coins: users.coins }).from(users).where(eq(users.id, req.userId));
-        const newCoins = user.coins + ach.reward;
-        await tx.update(users).set({ coins: newCoins }).where(eq(users.id, req.userId));
+        const [updated] = await tx.update(users)
+          .set({ coins: sql`${users.coins} + ${ach.reward}` })
+          .where(eq(users.id, req.userId))
+          .returning({ coins: users.coins });
 
-        return { reward: ach.reward, coins: newCoins };
+        // XP retention + level-up
+        const xpr = await grantXp(tx, req.userId, XP_REWARDS.achievement);
+
+        return {
+          reward: ach.reward, coins: updated.coins + (xpr.coinBonus || 0),
+          levelUp: xpr.leveledUp ? { level: xpr.newLevel, coinBonus: xpr.coinBonus } : null,
+        };
       });
 
       return res.status(200).json(result);

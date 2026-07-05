@@ -1,10 +1,10 @@
 <template>
-  <div class="max-w-xl mx-auto px-4 py-6">
+  <div class="max-w-xl mx-auto px-4 py-6 relative">
     <!-- Header -->
     <div class="flex items-center justify-between mb-6">
       <div>
-        <h1 class="text-2xl font-display font-bold bg-gradient-to-r from-primary via-accent-soft to-primary bg-clip-text text-transparent">MemeCats</h1>
-        <p class="text-muted text-sm">{{ authStore.user?.username }}</p>
+        <h1 class="text-2xl font-display font-bold dash-title">MemeCats</h1>
+        <p class="text-muted text-sm mt-0.5">{{ authStore.user?.username }}</p>
       </div>
       <CoinDisplay :amount="playerStore.coins" size="lg" />
     </div>
@@ -13,7 +13,7 @@
     <div class="mb-6 relative">
       <!-- Glow behind hero card -->
       <div v-if="playerStore.featuredCard" class="absolute inset-0 flex items-center justify-center pointer-events-none -z-10">
-        <div class="w-48 h-64 rounded-3xl blur-3xl opacity-25"
+        <div class="w-48 h-64 rounded-3xl blur-3xl opacity-30"
           :style="{ background: `radial-gradient(ellipse, ${heroGlowColor}, transparent 70%)` }"></div>
       </div>
 
@@ -38,7 +38,7 @@
           class="w-full h-full"
         />
         <div v-else class="w-full h-full glass-panel flex flex-col items-center justify-center text-center p-6">
-          <div class="w-20 h-20 rounded-full glass-panel flex items-center justify-center mb-4 animate-float">
+          <div class="w-20 h-20 rounded-full glass-panel flex items-center justify-center mb-4 animate-float" style="box-shadow: 0 0 30px rgba(124, 58, 237, 0.15);">
             <span class="text-4xl">🌟</span>
           </div>
           <h3 class="text-lg font-display font-bold mb-2">Mulai Koleksimu!</h3>
@@ -56,12 +56,12 @@
     </div>
 
     <!-- Collection Progress — Ring Style -->
-    <div class="glass-panel p-5 mb-4">
+    <div class="section-glass p-5 mb-4" data-tour="stats">
       <div class="flex items-center gap-4">
         <!-- Progress Ring -->
         <div class="relative flex-shrink-0">
           <svg width="56" height="56" viewBox="0 0 56 56">
-            <circle cx="28" cy="28" r="24" fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="4" />
+            <circle cx="28" cy="28" r="24" fill="none" stroke="rgba(255,255,255,0.04)" stroke-width="4" />
             <circle cx="28" cy="28" r="24" fill="none"
               stroke="url(#dexGradient)" stroke-width="4" stroke-linecap="round"
               class="progress-ring-circle"
@@ -96,21 +96,48 @@
     </div>
 
     <!-- Idle Economy — Enhanced Yield Pasif -->
-    <div class="glass-panel p-5 mb-4">
-      <div class="flex items-center justify-between mb-2">
+    <div class="section-glass p-5 mb-4" data-tour="showcase">
+      <div class="flex items-center justify-between mb-1">
         <p class="text-sm text-muted flex items-center gap-1.5 font-display">
           <span class="text-lg">⚡</span> Yield Pasif
         </p>
         <span class="text-[10px] text-muted font-display">
-          {{ playerStore.effectiveLikesPerSec.toFixed(2) }} likes/dtk efektif
+          ≈ {{ playerStore.coinsPerHour }} coin/jam
         </span>
       </div>
-
-      <!-- Animated coin counter -->
-      <p class="text-3xl font-display font-bold text-emerald-400 mb-1 transition-all">
-        {{ animatedEstimate }} <span class="text-sm text-emerald-400/60">coin</span>
+      <!-- Penjelasan singkat (selalu tampil) -->
+      <p class="text-[11px] text-muted/80 font-dm-sans mb-3">
+        🃏 Kartu yang kamu pajang di <strong class="text-secondary">Showcase</strong> menghasilkan coin otomatis tiap detik — makin langka & banyak, makin besar.
       </p>
 
+      <!-- EMPTY STATE: showcase kosong → jelaskan cara mengaktifkan -->
+      <div v-if="playerStore.showcase.length === 0"
+        class="rounded-xl p-4 border border-emerald-500/20 bg-emerald-500/[0.04] mb-1">
+        <div class="flex items-start gap-3">
+          <span class="text-2xl">💡</span>
+          <div class="flex-1">
+            <p class="text-sm font-display font-bold text-emerald-300">Showcase-mu masih kosong</p>
+            <p class="text-xs text-secondary mt-0.5 mb-3">Letakkan kartu ke showcase agar coin mulai bertambah otomatis. Tanpa kartu di showcase, yield = 0.</p>
+            <router-link to="/binder" class="btn-primary text-sm px-4 py-2 font-display inline-flex items-center gap-1.5">
+              🃏 Isi Showcase <span>→</span>
+            </router-link>
+          </div>
+        </div>
+      </div>
+
+      <!-- Animated coin counter (saat showcase berisi) -->
+      <template v-else>
+        <p class="text-3xl font-display font-bold text-emerald-400 mb-1 transition-all">
+          {{ animatedEstimate }} <span class="text-sm text-emerald-400/60">coin</span>
+        </p>
+        <p class="text-[10px] text-muted font-display mb-1">
+          {{ playerStore.effectiveLikesPerSec.toFixed(1) }} likes/dtk · 2.500 likes = 1 coin
+          <span v-if="playerStore.effectiveLikesPerSec > 87" class="text-legendary">· cap ~3.000/hari</span>
+        </p>
+      </template>
+
+      <!-- Progress, breakdown, & tombol klaim hanya saat showcase berisi -->
+      <template v-if="playerStore.showcase.length > 0">
       <!-- Progress bar ke 24h cap -->
       <div class="mb-2">
         <div class="flex items-center justify-between text-[10px] text-muted mb-1">
@@ -158,7 +185,11 @@
           </div>
           <div class="border-t border-white/5 pt-1 flex items-center justify-between">
             <span class="text-secondary font-semibold">Effective Rate</span>
-            <span class="font-bold text-primary">{{ playerStore.effectiveLikesPerSec.toFixed(2) }}/s</span>
+            <span class="font-bold text-primary">{{ playerStore.effectiveLikesPerSec.toFixed(2) }} likes/s</span>
+          </div>
+          <div class="flex items-center justify-between">
+            <span class="text-muted">💰 Konversi Coin</span>
+            <span class="font-semibold text-emerald-400">≈ {{ playerStore.coinsPerHour }} coin/jam</span>
           </div>
         </div>
       </div>
@@ -187,33 +218,34 @@
           <template v-else>💰 Klaim Yield Pasif</template>
         </span>
       </button>
+      </template>
     </div>
 
     <!-- Quick Actions -->
     <div class="grid grid-cols-2 gap-3 mb-5">
-      <router-link to="/binder" class="glass-panel p-4 text-center card-hover group">
-        <div class="w-10 h-10 rounded-xl glass-panel flex items-center justify-center mx-auto mb-2 group-hover:shadow-glow-sm transition-shadow" style="--glow-color: rgba(168, 85, 247, 0.3);">
+      <router-link to="/binder" class="glass-card p-4 text-center group">
+        <div class="w-11 h-11 rounded-xl glass-panel flex items-center justify-center mx-auto mb-2.5 group-hover:shadow-glow-sm transition-all duration-300" style="--glow-color: rgba(168, 85, 247, 0.3);">
           <span class="text-xl">📒</span>
         </div>
         <p class="text-sm font-display font-semibold">Binder</p>
         <p class="text-xs text-muted mt-0.5">{{ playerStore.inventory.length }} kartu</p>
       </router-link>
-      <router-link to="/gacha" class="glass-panel p-4 text-center card-hover group">
-        <div class="w-10 h-10 rounded-xl glass-panel flex items-center justify-center mx-auto mb-2 group-hover:shadow-glow-sm transition-shadow" style="--glow-color: rgba(245, 158, 11, 0.3);">
+      <router-link to="/gacha" class="glass-card p-4 text-center group">
+        <div class="w-11 h-11 rounded-xl glass-panel flex items-center justify-center mx-auto mb-2.5 group-hover:shadow-glow-sm transition-all duration-300" style="--glow-color: rgba(245, 158, 11, 0.3);">
           <span class="text-xl">🎴</span>
         </div>
         <p class="text-sm font-display font-semibold">Buka Pack</p>
         <p class="text-xs text-muted mt-0.5">100 coin</p>
       </router-link>
-      <router-link to="/market" class="glass-panel p-4 text-center card-hover group">
-        <div class="w-10 h-10 rounded-xl glass-panel flex items-center justify-center mx-auto mb-2 group-hover:shadow-glow-sm transition-shadow" style="--glow-color: rgba(56, 189, 248, 0.3);">
+      <router-link to="/market" class="glass-card p-4 text-center group">
+        <div class="w-11 h-11 rounded-xl glass-panel flex items-center justify-center mx-auto mb-2.5 group-hover:shadow-glow-sm transition-all duration-300" style="--glow-color: rgba(56, 189, 248, 0.3);">
           <span class="text-xl">💎</span>
         </div>
         <p class="text-sm font-display font-semibold">Market</p>
         <p class="text-xs text-muted mt-0.5">Jual & Beli</p>
       </router-link>
-      <router-link to="/activities" class="glass-panel p-4 text-center card-hover group">
-        <div class="w-10 h-10 rounded-xl glass-panel flex items-center justify-center mx-auto mb-2 group-hover:shadow-glow-sm transition-shadow" style="--glow-color: rgba(252, 211, 77, 0.3);">
+      <router-link to="/activities" class="glass-card p-4 text-center group">
+        <div class="w-11 h-11 rounded-xl glass-panel flex items-center justify-center mx-auto mb-2.5 group-hover:shadow-glow-sm transition-all duration-300" style="--glow-color: rgba(252, 211, 77, 0.3);">
           <span class="text-xl">🎮</span>
         </div>
         <p class="text-sm font-display font-semibold">Activities</p>
@@ -256,6 +288,7 @@
               :img-zoom="playerStore.showcase[slot - 1].imgZoom"
               :img-offset-x="playerStore.showcase[slot - 1].imgOffsetX"
               :img-offset-y="playerStore.showcase[slot - 1].imgOffsetY"
+              :drop-rate="playerStore.dropRateOf(playerStore.showcase[slot - 1].id)"
               mode="mini"
             />
           </template>
@@ -267,6 +300,14 @@
         </div>
       </div>
     </div>
+
+    <!-- Ulangi panduan onboarding -->
+    <div class="text-center mt-6 mb-2">
+      <button @click="tour.start()" data-nosound
+        class="text-xs text-muted hover:text-secondary font-display inline-flex items-center gap-1.5 transition-colors">
+        <span>🧭</span> Ulangi Panduan
+      </button>
+    </div>
   </div>
 </template>
 
@@ -275,12 +316,16 @@ import { ref, computed, onMounted, onBeforeUnmount } from 'vue';
 import { useAuthStore } from '@/stores/auth.js';
 import { usePlayerStore } from '@/stores/player.js';
 import { useToast } from '@/composables/useToast.js';
+import { useSound } from '@/composables/useSound.js';
+import { useTour } from '@/composables/useTour.js';
 import CoinDisplay from '@/components/CoinDisplay.vue';
 import Card3D from '@/components/Card3D.vue';
 
+const tour = useTour();
 const authStore = useAuthStore();
 const playerStore = usePlayerStore();
 const toast = useToast();
+const sound = useSound();
 
 const claiming = ref(false);
 const cooldownRemaining = ref(0);
@@ -307,10 +352,8 @@ function updateAnimatedEstimate() {
     animationFrame = requestAnimationFrame(updateAnimatedEstimate);
     return;
   }
-  const elapsed = Math.max(0, Math.floor((Date.now() - new Date(authStore.user.lastClaimedAt).getTime()) / 1000));
-  const capped = Math.min(elapsed, 86400);
-  const raw = Math.floor(capped * playerStore.effectiveLikesPerSec);
-  animatedEstimate.value = raw.toLocaleString('id-ID');
+  // Konsisten dengan server: likes diakumulasi lalu dikonversi ke coin
+  animatedEstimate.value = playerStore.estimatedClaimCoins().toLocaleString('id-ID');
   animationFrame = requestAnimationFrame(updateAnimatedEstimate);
 }
 
@@ -325,7 +368,8 @@ async function handleClaim() {
     if (!res.ok) throw data;
     await playerStore.refreshAfterAction();
     if (data.coinsEarned > 0) {
-      toast.success(`+${data.coinsEarned.toLocaleString('id-ID')} coin! Rate: ${data.effectiveRate}/s`);
+      sound.play('coinBurst');
+      toast.success(`+${data.coinsEarned.toLocaleString('id-ID')} coin! (≈ ${data.coinsPerHour}/jam)`);
     } else {
       toast.info(data.message || 'Klaim berhasil.');
     }
@@ -346,7 +390,7 @@ function updateCooldown() {
 let syncInterval = null;
 
 onMounted(async () => {
-  await Promise.all([playerStore.fetchMasterCards(), playerStore.fetchInventory(), authStore.fetchMe()]);
+  await Promise.all([playerStore.fetchMasterCards(), playerStore.fetchInventory(), authStore.fetchMe(), playerStore.fetchDropRates()]);
   updateCooldown();
   cooldownInterval = setInterval(updateCooldown, 1000);
   animationFrame = requestAnimationFrame(updateAnimatedEstimate);
@@ -359,3 +403,18 @@ onBeforeUnmount(() => {
   if (syncInterval) clearInterval(syncInterval);
 });
 </script>
+
+<style scoped>
+.dash-title {
+  background: linear-gradient(135deg, #EEEDF2, #8B5CF6, #F88CD4, #8B5CF6, #EEEDF2);
+  background-size: 400% 400%;
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: dash-gradient 6s ease-in-out infinite;
+}
+@keyframes dash-gradient {
+  0%, 100% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+}
+</style>

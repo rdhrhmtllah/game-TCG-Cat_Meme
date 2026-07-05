@@ -1,5 +1,7 @@
 import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
+import { useToast } from '@/composables/useToast.js';
+import { useSound } from '@/composables/useSound.js';
 
 const TOKEN_KEY = 'memecats_token';
 
@@ -33,11 +35,11 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
-  async function register(username, password) {
+  async function register(username, email, password) {
     const res = await fetch('/api/auth/register', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, password }),
+      body: JSON.stringify({ username, email, password }),
     });
     const data = await safeJson(res);
     if (!res.ok) throw data;
@@ -65,12 +67,27 @@ export const useAuthStore = defineStore('auth', () => {
       headers: { Authorization: `Bearer ${token.value}` },
     });
     if (!res.ok) {
-      // Token invalid/expired — bersihkan sesi tersimpan
+      // Akun diblokir → logout + beri tahu
+      if (res.status === 403) {
+        try {
+          const d = await res.clone().json();
+          if (d?.error?.code === 'BANNED' || d?.code === 'BANNED') {
+            useToast().error('Akun kamu diblokir. Hubungi admin.');
+          }
+        } catch { /* abaikan */ }
+      }
+      // Token invalid/expired/banned — bersihkan sesi tersimpan
       setToken(null);
       user.value = null;
       return null;
     }
     const data = await safeJson(res);
+    // Deteksi level-up: bandingkan level sebelum & sesudah refresh
+    const prevLevel = user.value?.level;
+    if (prevLevel != null && data.user?.level > prevLevel) {
+      useToast().success(`🎉 Naik ke Level ${data.user.level}! Bonus coin masuk.`);
+      try { useSound().play('levelUp'); } catch { /* abaikan */ }
+    }
     user.value = data.user;
     return data.user;
   }
@@ -78,6 +95,19 @@ export const useAuthStore = defineStore('auth', () => {
   function logout() {
     setToken(null);
     user.value = null;
+  }
+
+  // Tandai onboarding tour sudah dilihat (persist di backend, lintas perangkat).
+  // Optimistic: set lokal dulu agar UI langsung tenang, lalu sinkron ke server.
+  async function markTourSeen() {
+    if (user.value) user.value.hasSeenTour = true;
+    if (!token.value) return;
+    try {
+      await fetch('/api/tour-seen', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token.value}` },
+      });
+    } catch { /* diamkan — flag lokal sudah true, akan tersinkron saat fetchMe berikutnya */ }
   }
 
   return {
@@ -88,5 +118,6 @@ export const useAuthStore = defineStore('auth', () => {
     login,
     fetchMe,
     logout,
+    markTourSeen,
   };
 });

@@ -4,6 +4,7 @@ import { eq, and, sql } from 'drizzle-orm';
 import requireAuth from '../_lib/requireAuth.js';
 import { sellToVaultSchema } from '../_lib/schemas.js';
 import { sendError, logError } from '../_lib/errors.js';
+import { incrementMission } from '../missions.js';
 
 /**
  * POST /api/inventory/sell
@@ -79,6 +80,8 @@ export default requireAuth(async function handler(req, res) {
 
       return { totalEarned, totalCurrentCoins: updatedUser.coins };
     });
+
+    incrementMission(req.userId, 'sell_card').catch(() => {});
 
     return res.status(200).json({
       message: 'Kartu terjual ke sistem!',

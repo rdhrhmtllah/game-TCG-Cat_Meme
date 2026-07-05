@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <title>Marketplace Gallery Preview</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Outfit:wght@400;500;600;700;800&family=Cinzel:wght@700;800;900&display=swap" rel="stylesheet" />
+  <style>
+    body { background: #070B1A; color: #fff; font-family: 'Inter', sans-serif; margin: 0; padding: 16px; }
+    .wrap { max-width: 440px; margin: 0 auto; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .tile { cursor: pointer; transition: transform .2s; }
+    .tile:hover { transform: translateY(-4px); }
+    .art { position: relative; border-radius: .75rem; overflow: hidden; }
+    .g-common    { box-shadow: 0 4px 14px rgba(0,0,0,.4); }
+    .g-rare      { box-shadow: 0 4px 16px rgba(56,189,248,.22); }
+    .g-epic      { box-shadow: 0 4px 18px rgba(168,85,247,.28); }
+    .g-legendary { box-shadow: 0 4px 22px rgba(245,158,11,.34); }
+    .badge { position:absolute; top:6px; left:6px; font-size:8px; font-weight:900; padding:2px 6px; border-radius:5px; z-index:10; }
+    .b-common{background:#475569}.b-rare{background:#0284C7}.b-epic{background:#7C3AED}.b-legendary{background:#B45309}
+    .info { padding: 8px 4px 0; }
+    .name { font-weight:600; font-size:13px; }
+    .seller { font-size:10px; color:#64748B; }
+    .row { display:flex; align-items:center; justify-content:space-between; margin-top:6px; }
+    .price { font-weight:900; font-size:14px; color:#FBBF24; }
+    .buy { font-size:12px; font-weight:700; padding:6px 14px; border-radius:10px; border:none;
+           background:linear-gradient(135deg,#7C3AED,#A855F7); color:#fff; cursor:pointer; }
+    h1 { font-size:15px; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>🛒 Marketplace — Galeri (preview)</h1>
+    <div class="grid" id="grid"></div>
+  </div>
+  <script type="module">
+    import { drawCardCanvas } from '/src/utils/cardRenderer.js';
+    import { ensureFontsLoaded } from '/src/utils/fonts.js';
+
+    const MOCK = [
+      { name: 'Nyan Dragon Rex', rarity: 'Legendary', element: 'Fire', hypeScore: 800, likesPerSec: 15, price: 3200, seller: 'catlord' },
+      { name: 'Thumbs Up Cat', rarity: 'Rare', element: 'Water', hypeScore: 200, likesPerSec: 2.5, price: 110, seller: 'jiji' },
+      { name: 'Cosmic Whiskers', rarity: 'Epic', element: 'Cosmic', hypeScore: 400, likesPerSec: 6.5, price: 640, seller: 'meowster' },
+      { name: 'Grumpy Bapak', rarity: 'Common', element: 'Normal', hypeScore: 50, likesPerSec: 0.8, price: 45, seller: 'anon' },
+    ];
+
+    await ensureFontsLoaded();
+    const grid = document.getElementById('grid');
+    for (const c of MOCK) {
+      const canvas = drawCardCanvas({ ...c, description: 'Kartu meme legendaris.', foilStyle: 'Standard', hideStats: true }, null);
+      canvas.style.width = '100%'; canvas.style.height = '100%'; canvas.style.display = 'block';
+      const r = c.rarity.toLowerCase();
+      const tile = document.createElement('div');
+      tile.className = 'tile';
+      tile.innerHTML = `
+        <div class="art g-${r}">
+          <span class="badge b-${r}">${c.rarity}</span>
+        </div>
+        <div class="info">
+          <div class="name">${c.name}</div>
+          <div class="seller">oleh ${c.seller}</div>
+          <div class="row"><span class="price">🪙 ${c.price.toLocaleString('id-ID')}</span><button class="buy">Beli</button></div>
+        </div>`;
+      tile.querySelector('.art').prepend(canvas);
+      grid.appendChild(tile);
+    }
+    document.title = 'MARKET-READY';
+  </script>
+</body>
+</html>

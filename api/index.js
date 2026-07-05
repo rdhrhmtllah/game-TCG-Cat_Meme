@@ -4,9 +4,15 @@ import adminLogin from '../api-server/admin/login.js';
 import adminCards from '../api-server/admin/cards.js';
 import adminUploadImage from '../api-server/admin/upload-image.js';
 import adminAiAssist from '../api-server/admin/ai-assist.js';
+import adminStats from '../api-server/admin/stats.js';
+import adminUsers from '../api-server/admin/users.js';
+import adminUserDetail from '../api-server/admin/user-detail.js';
+import adminUserAction from '../api-server/admin/user-action.js';
+import adminLogout from '../api-server/admin/logout.js';
 import me from '../api-server/me.js';
 import masterCards from '../api-server/master-cards.js';
 import gacha from '../api-server/gacha.js';
+import gachaRates from '../api-server/gacha-rates.js';
 import cardFusion from '../api-server/card-fusion.js';
 import showcase from '../api-server/showcase.js';
 import spinWheel from '../api-server/spin-wheel.js';
@@ -15,6 +21,8 @@ import dailyLogin from '../api-server/daily-login.js';
 import claimIdle from '../api-server/claim-idle.js';
 import missions from '../api-server/missions.js';
 import achievements from '../api-server/achievements.js';
+import leaderboard from '../api-server/leaderboard.js';
+import tourSeen from '../api-server/tour-seen.js';
 import cronTrends from '../api-server/cron-trends.js';
 import inventoryIndex from '../api-server/inventory/index.js';
 import inventorySell from '../api-server/inventory/sell.js';
@@ -30,9 +38,15 @@ const routes = {
   '/api/admin/cards': adminCards,
   '/api/admin/upload-image': adminUploadImage,
   '/api/admin/ai-assist': adminAiAssist,
+  '/api/admin/stats': adminStats,
+  '/api/admin/users': adminUsers,
+  '/api/admin/user-detail': adminUserDetail,
+  '/api/admin/user-action': adminUserAction,
+  '/api/admin/logout': adminLogout,
   '/api/me': me,
   '/api/master-cards': masterCards,
   '/api/gacha': gacha,
+  '/api/gacha-rates': gachaRates,
   '/api/card-fusion': cardFusion,
   '/api/showcase': showcase,
   '/api/spin-wheel': spinWheel,
@@ -41,6 +55,8 @@ const routes = {
   '/api/claim-idle': claimIdle,
   '/api/missions': missions,
   '/api/achievements': achievements,
+  '/api/leaderboard': leaderboard,
+  '/api/tour-seen': tourSeen,
   '/api/cron-trends': cronTrends,
   '/api/inventory': inventoryIndex,
   '/api/inventory/sell': inventorySell,

@@ -87,8 +87,10 @@ import * as THREE from 'three';
 import { getQualityConfig } from '@/utils/quality.js';
 import { createEnvironmentTexture } from '@/utils/threeEnv.js';
 import { ensureFontsLoaded } from '@/utils/fonts.js';
+import { useSound } from '@/composables/useSound.js';
 
 const quality = getQualityConfig();
+const sound = useSound();
 
 const props = defineProps({
   tearing: { type: Boolean, default: false },
@@ -698,10 +700,25 @@ function enterCarousel() {
   spinVel = 5.2; // rad/s — transisi BERPUTAR kencang, mereda ke idle
 }
 
+// Buang GPU resource satu unit pouch (skip coreMaterial yang di-share)
+function disposeUnit(unit) {
+  unit?.traverse?.((o) => {
+    if (!o.isMesh) return;
+    o.geometry?.dispose?.();
+    const mats = Array.isArray(o.material) ? o.material : [o.material];
+    mats.forEach((m) => {
+      if (!m || m === coreMaterial) return;
+      m.map?.dispose?.();
+      m.dispose?.();
+    });
+  });
+}
+
 function exitCarousel(keepUnit) {
   if (!carouselGroup) return;
+  // Unit carousel yang tidak dipakai dibuang total (cegah memory leak per buka pack)
   packUnits.forEach((u) => {
-    if (u !== keepUnit) carouselGroup.remove(u);
+    if (u !== keepUnit) { carouselGroup.remove(u); disposeUnit(u); }
   });
   if (keepUnit) {
     carouselGroup.remove(keepUnit);
@@ -710,6 +727,33 @@ function exitCarousel(keepUnit) {
   scene.remove(carouselGroup);
   carouselGroup = null;
   packUnits = [];
+}
+
+// Kembalikan pack utama ke pose idle penuh (dipakai setelah tear/reveal
+// selesai). Tanpa ini, packGroup tetap invisible+shrunk dari akhir animasi
+// tear → pack tidak muncul lagi saat kembali ke idle.
+function restoreIdlePose() {
+  if (!packGroup) return;
+  packGroup.visible = true;
+  packGroup.scale.set(1, 1, 1);
+  packGroup.position.set(0, 0, 0);
+  packGroup.rotation.set(0, 0, 0);
+  packRotation.x = 0; packRotation.y = 0;
+  rotationVelocity.x = 0; rotationVelocity.y = 0;
+  tearProgress = 0; tearP = 0;
+  tearProgressPercent.value = 0;
+  if (packWhole) packWhole.visible = true;
+  if (packTopHalf) {
+    packTopHalf.visible = false;
+    packTopHalf.position.set(0, packTopHalf.userData.baseY, 0);
+    packTopHalf.rotation.set(0, 0, 0);
+  }
+  if (packBottomHalf) {
+    packBottomHalf.visible = false;
+    packBottomHalf.position.set(0, packBottomHalf.userData.baseY, 0);
+    packBottomHalf.rotation.set(0, 0, 0);
+  }
+  if (leakMesh) leakMesh.visible = false;
 }
 
 function trySelectPack(clientX, clientY) {
@@ -866,12 +910,11 @@ function animate() {
         const chosen = focusAnim.chosen;
         focusAnim = null;
         exitCarousel(chosen);
-        // Pack pilihan jadi pack aktif: pindahkan visualnya ke packGroup
+        // Pack pilihan jadi pack aktif: reuse packGroup, unit carousel dibuang
         scene.remove(chosen);
-        packGroup.visible = true;
-        packWhole.visible = true;
+        disposeUnit(chosen);
+        restoreIdlePose();
         packGroup.position.set(0, 0, 0.4);
-        packRotation.x = 0; packRotation.y = 0;
         emit('pack-selected');
       }
     }
@@ -1136,12 +1179,20 @@ watch(() => props.selectMode, (val) => {
   if (val) enterCarousel();
   else if (carouselGroup && !focusAnim) {
     exitCarousel(null);
-    packGroup.visible = true;
+    restoreIdlePose();
   }
+});
+
+// Kembali ke idle (semua mode mati) → pulihkan pose pack.
+// Ini yang memperbaiki bug "pack tidak muncul setelah brewek 1x".
+watch(() => [props.selectMode, props.tearMode, props.tearing], ([s, tm, tr]) => {
+  if (!s && !tm && !tr && !carouselGroup && !focusAnim) restoreIdlePose();
 });
 
 watch(() => props.tearing, (val) => {
   if (val) {
+    sound.play('packTear');
+    sound.haptic([30, 20, 60]);
     tearProgress = 0;
     if (packGroup) { packGroup.visible = true; packGroup.scale.set(1, 1, 1); }
     // Auto-tear: drag manual belum sempat memunculkan potongan — paksa

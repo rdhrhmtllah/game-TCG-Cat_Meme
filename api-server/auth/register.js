@@ -5,6 +5,7 @@ import { registerSchema } from '../_lib/schemas.js';
 import { signToken } from '../_lib/jwt.js';
 import { sendError, logError } from '../_lib/errors.js';
 import { checkRateLimit } from '../_lib/rateLimit.js';
+import { validateEmail } from '../_lib/emailValidation.js';
 import bcrypt from 'bcryptjs';
 
 const BCRYPT_COST = 10;
@@ -32,17 +33,34 @@ export default async function handler(req, res) {
       return sendError(res, 400, 'VALIDATION_ERROR', firstError.message);
     }
 
-    const { username, password } = parsed.data;
+    const { username, email, password } = parsed.data;
     const normalizedUsername = username.toLowerCase();
+    const normalizedEmail = email.trim().toLowerCase();
+
+    // Validasi email: bukan sekali-pakai & domain punya mail server (MX)
+    const emailCheck = await validateEmail(normalizedEmail);
+    if (!emailCheck.ok) {
+      return sendError(res, 400, 'INVALID_EMAIL', emailCheck.reason);
+    }
 
     // Cek username unik
-    const existing = await db.select({ id: users.id })
+    const existingUsername = await db.select({ id: users.id })
       .from(users)
       .where(eq(users.username, normalizedUsername))
       .limit(1);
 
-    if (existing.length > 0) {
+    if (existingUsername.length > 0) {
       return sendError(res, 409, 'USERNAME_TAKEN', 'Username sudah digunakan.');
+    }
+
+    // Cek email unik (satu email = satu akun)
+    const existingEmail = await db.select({ id: users.id })
+      .from(users)
+      .where(eq(users.email, normalizedEmail))
+      .limit(1);
+
+    if (existingEmail.length > 0) {
+      return sendError(res, 409, 'EMAIL_TAKEN', 'Email sudah terdaftar. Gunakan email lain atau login.');
     }
 
     // Hash password
@@ -52,15 +70,21 @@ export default async function handler(req, res) {
     const [newUser] = await db.insert(users)
       .values({
         username: normalizedUsername,
+        email: normalizedEmail,
         passwordHash,
         coins: 500,
       })
       .returning({
         id: users.id,
         username: users.username,
+        email: users.email,
         coins: users.coins,
         avatarUrl: users.avatarUrl,
         createdAt: users.createdAt,
+        xp: users.xp,
+        level: users.level,
+        pityCounter: users.pityCounter,
+        hasSeenTour: users.hasSeenTour,
       });
 
     // Auto-login: sign JWT

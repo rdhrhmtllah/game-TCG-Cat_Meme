@@ -7,6 +7,8 @@ export const usePlayerStore = defineStore('player', () => {
   const showcase = ref([]);
   const masterCards = ref([]);
   const hasSeenWelcome = ref(false);
+  // Peluang drop per kartu (cardId → %), dari /api/gacha-rates
+  const dropRates = ref({});
 
   // Card Dex progress
   const totalCardsOwned = computed(() => {
@@ -28,6 +30,11 @@ export const usePlayerStore = defineStore('player', () => {
   const COLLECTION_BONUS_PER_CARD = 0.03;
   const SYNERGY_THRESHOLD = 3;
   const SYNERGY_MULTIPLIER = 1.10;
+  // Konversi likes → coin (HARUS sama dengan api-server/claim-idle.js).
+  // "likes" = engagement, coin = mata uang. Rate dibatasi agar total
+  // harian ter-cap ~3.000 coin (anti-eksploit klaim sering).
+  const LIKES_PER_COIN = 2500;
+  const MAX_EFFECTIVE_RATE = 87; // likes/dtk (≈3.000 coin/24 jam)
 
   // Showcase likes/sec
   const totalLikesPerSec = computed(() => {
@@ -76,6 +83,26 @@ export const usePlayerStore = defineStore('player', () => {
   const totalYieldMultiplier = computed(() =>
     parseFloat((streakMultiplier.value * synergyMultiplier.value).toFixed(2))
   );
+
+  // Rate pembayaran (likes efektif dibatasi cap) — dipakai konversi coin
+  const payoutRate = computed(() => Math.min(effectiveLikesPerSec.value, MAX_EFFECTIVE_RATE));
+
+  // Rate coin per jam (konversi dari rate pembayaran) — untuk display
+  const coinsPerHour = computed(() =>
+    parseFloat(((payoutRate.value * 3600) / LIKES_PER_COIN).toFixed(1))
+  );
+
+  // Estimasi coin yang bisa diklaim SEKARANG (konsisten dengan server).
+  // Dipakai animasi counter di Dashboard.
+  function estimatedClaimCoins() {
+    const authStore = useAuthStore();
+    if (!authStore.user?.lastClaimedAt) return 0;
+    const elapsed = Math.max(0, Math.floor(
+      (Date.now() - new Date(authStore.user.lastClaimedAt).getTime()) / 1000
+    ));
+    const capped = Math.min(elapsed, MAX_IDLE_SECONDS);
+    return Math.floor((capped * payoutRate.value) / LIKES_PER_COIN);
+  }
 
   // Progress menuju cap 24 jam (0-100)
   const yieldCapProgress = computed(() => {
@@ -145,6 +172,25 @@ export const usePlayerStore = defineStore('player', () => {
     if (res.ok) masterCards.value = data.cards;
   }
 
+  // Peluang drop tiap kartu (untuk ditampilkan di kartu/detail/layar peluang)
+  async function fetchDropRates() {
+    try {
+      const res = await fetch('/api/gacha-rates');
+      const data = await safeJson(res);
+      if (res.ok) {
+        const map = {};
+        for (const c of data.cards || []) map[c.id] = c.dropRate;
+        dropRates.value = map;
+      }
+    } catch { /* non-kritis */ }
+  }
+
+  // Peluang drop suatu kartu (%), atau null bila belum tersedia
+  function dropRateOf(cardId) {
+    const v = dropRates.value[cardId];
+    return (v === undefined || v === null) ? null : v;
+  }
+
   async function fetchInventory() {
     const authStore = useAuthStore();
     if (!authStore.token) return;
@@ -196,10 +242,15 @@ export const usePlayerStore = defineStore('player', () => {
     synergyMultiplier,
     effectiveLikesPerSec,
     totalYieldMultiplier,
+    coinsPerHour,
+    estimatedClaimCoins,
     yieldCapProgress,
     showcaseElementCounts,
     yieldBreakdown,
     fetchMasterCards,
+    fetchDropRates,
+    dropRates,
+    dropRateOf,
     fetchInventory,
     refreshAfterAction,
     reset,

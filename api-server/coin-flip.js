@@ -4,6 +4,8 @@ import { eq, and, gte, sql } from 'drizzle-orm';
 import requireAuth from './_lib/requireAuth.js';
 import { sendError } from './_lib/errors.js';
 import { checkRateLimit } from './_lib/rateLimit.js';
+import { incrementMission } from './missions.js';
+import { grantXp, XP_REWARDS } from './_lib/progression.js';
 
 /**
  * POST /api/coin-flip
@@ -60,15 +62,27 @@ export default requireAuth(async function handler(req, res) {
         result: won ? 'win' : 'lose',
       });
 
+      // XP hanya saat menang
+      let levelUp = null, bonus = 0;
+      if (won) {
+        const xpr = await grantXp(tx, req.userId, XP_REWARDS.coin_flip);
+        bonus = xpr.coinBonus || 0;
+        if (xpr.leveledUp) levelUp = { level: xpr.newLevel, coinBonus: xpr.coinBonus };
+      }
+
       return {
         flipResult,
         choice,
         won,
         betAmount,
         coinChange: won ? betAmount : -betAmount,
-        coins: newCoins,
+        coins: newCoins + bonus,
+        levelUp,
       };
     });
+
+    // Quest: menang coin flip
+    if (result.won) incrementMission(req.userId, 'win_coinflip').catch(() => {});
 
     return res.status(200).json(result);
   } catch (err) {

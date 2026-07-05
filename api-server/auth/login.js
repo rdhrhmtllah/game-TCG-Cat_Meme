@@ -1,6 +1,6 @@
 import { db } from '../db/client.js';
 import { users } from '../db/schema.js';
-import { eq } from 'drizzle-orm';
+import { eq, or } from 'drizzle-orm';
 import { loginSchema } from '../_lib/schemas.js';
 import { signToken } from '../_lib/jwt.js';
 import { sendError, logError } from '../_lib/errors.js';
@@ -29,53 +29,65 @@ export default async function handler(req, res) {
     }
 
     const { username, password } = parsed.data;
-    const normalizedUsername = username.toLowerCase();
-    logInfo('login', `🔐 Login attempt: ${normalizedUsername}`, { ip });
+    // "username" bisa berupa username ATAU email — normalisasi lowercase
+    const identifier = username.trim().toLowerCase();
+    logInfo('login', `🔐 Login attempt: ${identifier}`, { ip });
 
     // Rate limit by IP
     if (!checkRateLimit(`login:ip:${ip}`, 5, 60_000)) {
       return sendError(res, 429, 'VALIDATION_ERROR', 'Terlalu banyak percobaan. Coba lagi nanti.');
     }
 
-    // Rate limit by username (anti-brute force per akun)
-    if (!checkRateLimit(`login:user:${normalizedUsername}`, 5, 60_000)) {
+    // Rate limit by identifier (anti-brute force per akun)
+    if (!checkRateLimit(`login:user:${identifier}`, 5, 60_000)) {
       return sendError(res, 429, 'VALIDATION_ERROR', 'Terlalu banyak percobaan untuk akun ini. Coba lagi nanti.');
     }
 
-    // Cari user
-    logInfo('login', `🔍 Querying DB for: ${normalizedUsername}`);
+    // Cari user berdasarkan username ATAU email
+    logInfo('login', `🔍 Querying DB for: ${identifier}`);
     const [foundUser] = await db.select()
       .from(users)
-      .where(eq(users.username, normalizedUsername))
+      .where(or(eq(users.username, identifier), eq(users.email, identifier)))
       .limit(1);
 
     if (!foundUser) {
-      logInfo('login', `❌ User not found: ${normalizedUsername}`);
-      return sendError(res, 401, 'INVALID_CREDENTIALS', 'Username atau password salah.');
+      logInfo('login', `❌ User not found: ${identifier}`);
+      return sendError(res, 401, 'INVALID_CREDENTIALS', 'Username/email atau password salah.');
+    }
+
+    // Tolak user yang di-ban (sebelum sign token)
+    if (foundUser.banned) {
+      logInfo('login', `⛔ Banned user login blocked: ${identifier}`);
+      return sendError(res, 403, 'BANNED', 'Akun kamu diblokir. Hubungi admin.');
     }
 
     // Compare password
-    logInfo('login', `🔑 Comparing password for: ${normalizedUsername}`);
+    logInfo('login', `🔑 Comparing password for: ${identifier}`);
     const isValid = await bcrypt.compare(password, foundUser.passwordHash);
     if (!isValid) {
-      logInfo('login', `❌ Invalid password for: ${normalizedUsername}`);
-      return sendError(res, 401, 'INVALID_CREDENTIALS', 'Username atau password salah.');
+      logInfo('login', `❌ Invalid password for: ${identifier}`);
+      return sendError(res, 401, 'INVALID_CREDENTIALS', 'Username/email atau password salah.');
     }
 
     // Sign JWT
-    logInfo('login', `✍️ Signing JWT for: ${normalizedUsername} (userId=${foundUser.id})`);
+    logInfo('login', `✍️ Signing JWT for: ${identifier} (userId=${foundUser.id})`);
     const token = signToken({ userId: foundUser.id, username: foundUser.username });
 
-    logInfo('login', `✅ Login success: ${normalizedUsername}`);
+    logInfo('login', `✅ Login success: ${identifier}`);
     return res.status(200).json({
       message: 'Login berhasil! Selamat datang kembali!',
       user: {
         id: foundUser.id,
         username: foundUser.username,
+        email: foundUser.email,
         coins: foundUser.coins,
         avatarUrl: foundUser.avatarUrl,
         createdAt: foundUser.createdAt,
         lastClaimedAt: foundUser.lastClaimedAt,
+        xp: foundUser.xp,
+        level: foundUser.level,
+        pityCounter: foundUser.pityCounter,
+        hasSeenTour: foundUser.hasSeenTour,
       },
       token,
     });

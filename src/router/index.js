@@ -16,6 +16,13 @@ const routes = [
   },
   {
     path: '/',
+    name: 'Landing',
+    component: () => import('@/views/Landing.vue'),
+    // guest: true → visitor yang sudah login otomatis diarahkan ke /app
+    meta: { guest: true },
+  },
+  {
+    path: '/app',
     name: 'Dashboard',
     component: () => import('@/views/Dashboard.vue'),
     meta: { requiresAuth: true },
@@ -45,10 +52,16 @@ const routes = [
     meta: { requiresAuth: true },
   },
   {
+    path: '/leaderboard',
+    name: 'Leaderboard',
+    component: () => import('@/views/Leaderboard.vue'),
+    meta: { requiresAuth: true },
+  },
+  {
     path: '/admin',
-    name: 'AdminCards',
-    component: () => import('@/views/AdminCards.vue'),
-    // Admin auth is handled internally, not via user JWT guard
+    name: 'Admin',
+    component: () => import('@/views/AdminPanel.vue'),
+    // Admin auth is handled internally (shared secret cookie), not via user JWT guard
   },
   {
     path: '/:pathMatch(.*)*',

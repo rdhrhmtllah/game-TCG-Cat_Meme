@@ -679,6 +679,16 @@ function drawPremiumFooter(ctx, w, h, footerY, cardData, opts) {
     drawPawIcon(ctx, w - 34 - i * 16 - 6, footerY - 3, 6, valueColor, null);
   }
 
+  // — Peluang drop di tengah baris meta (bila tersedia) —
+  if (cardData.dropRate !== null && cardData.dropRate !== undefined && cardData.dropRate !== '') {
+    const rate = Number(cardData.dropRate);
+    const rateStr = `DROP ${rate < 1 ? rate.toFixed(2) : rate.toFixed(1)}%`;
+    ctx.textAlign = 'center';
+    ctx.font = '800 9px "Outfit",sans-serif';
+    ctx.fillStyle = valueColor;
+    ctx.fillText(rateStr, w / 2, h - 13);
+  }
+
   // — Baris meta: illustrator + rarity pip + wordmark —
   ctx.fillStyle = metaColor; ctx.font = '600 8px "Inter",sans-serif'; ctx.textAlign = 'left';
   ctx.fillText(`Illus. ${cardData.illustrator || 'AI Artist'}`, 30, h - 13);
@@ -1613,7 +1623,7 @@ function drawWrappedText(ctx, text, cx, startY, maxW, lineHeight, color, font) {
 // COMMON TCG Template Design — "TITANIUM PLATE"
 // ============================================================
 function drawCommon(ctx, w, h, cardData, artworkImage, foilStyle = 'Standard') {
-  const isBleed = isFullBleed(foilStyle);
+  const isBleed = isFullBleed(foilStyle) || cardData.hideStats;
 
   // ── 1. BACKGROUND ──────────────────────────────────────────
   if (isBleed) {
@@ -1758,7 +1768,7 @@ function drawCommon(ctx, w, h, cardData, artworkImage, foilStyle = 'Standard') {
   }
 
   // ── 5. SPECIES BAR ─────────────────────────────────────────
-  if (!isBleed) {
+  if (!isBleed && !cardData.hideStats) {
     ctx.save();
     ctx.fillStyle = '#1F2937'; ctx.fillRect(30, 476, w - 60, 22);
     ctx.strokeStyle = '#374151'; ctx.lineWidth = 1; ctx.strokeRect(30, 476, w - 60, 22);
@@ -1768,7 +1778,8 @@ function drawCommon(ctx, w, h, cardData, artworkImage, foilStyle = 'Standard') {
   }
 
   // ── 6. ATTACK PANEL ────────────────────────────────────────
-  const panelY = isBleed ? 480 : 510, panelH = isBleed ? 300 : 262;
+  if (!cardData.hideStats) {
+    const panelY = isBleed ? 480 : 510, panelH = isBleed ? 300 : 262;
   ctx.save();
   if (isBleed) {
     if (foilStyle === 'Secret Gold') {
@@ -1845,6 +1856,7 @@ function drawCommon(ctx, w, h, cardData, artworkImage, foilStyle = 'Standard') {
     (isBleed && foilStyle !== 'Special Illustration') ? '#9CA3AF' : '#4B5563',
     'italic 500 13px "Inter",sans-serif'
   );
+  }
 
   // ── 7. FOOTER ──────────────────────────────────────────────
   const footerY = isBleed ? h - 44 : 800;
@@ -1861,7 +1873,7 @@ function drawCommon(ctx, w, h, cardData, artworkImage, foilStyle = 'Standard') {
 // RARE TCG Template Design — "NEON SAPPHIRE CIRCUIT"
 // ============================================================
 function drawRare(ctx, w, h, cardData, artworkImage, foilStyle = 'Standard') {
-  const isBleed = isFullBleed(foilStyle);
+  const isBleed = isFullBleed(foilStyle) || cardData.hideStats;
 
   // ── 1. BACKGROUND ──────────────────────────────────────────
   if (isBleed) {
@@ -2020,17 +2032,18 @@ function drawRare(ctx, w, h, cardData, artworkImage, foilStyle = 'Standard') {
   }
 
   // ── 5. SPECIES BAR ─────────────────────────────────────────
-  if (!isBleed) {
+  if (!isBleed && !cardData.hideStats) {
     ctx.save();
     ctx.fillStyle = 'rgba(10,22,46,0.85)'; ctx.fillRect(30, 476, w-60, 22);
-    ctx.strokeStyle = 'rgba(56,189,248,0.3)'; ctx.lineWidth = 1; ctx.strokeRect(30, 476, w-60, 22);
+    ctx.strokeStyle = 'rgba(56,189,248,0.35)'; ctx.lineWidth = 1; ctx.strokeRect(30, 476, w-60, 22);
     ctx.fillStyle = '#38BDF8'; ctx.font = 'italic 500 11px "Inter",sans-serif'; ctx.textAlign = 'center';
     ctx.fillText(`HOLO RARE • Hype: ${cardData.hypeScore || 200} • Yield: ${cardData.likesPerSec || 0} L/s`, w/2, 491);
     ctx.restore();
   }
 
   // ── 6. ATTACK PANEL ────────────────────────────────────────
-  const panelY = isBleed ? 480 : 510, panelH = isBleed ? 300 : 262;
+  if (!cardData.hideStats) {
+    const panelY = isBleed ? 480 : 510, panelH = isBleed ? 300 : 262;
   ctx.save();
   if (isBleed && foilStyle === 'Secret Gold') {
     ctx.fillStyle = 'rgba(5,8,18,0.88)'; drawRoundRectPath(ctx, 28, panelY, w-56, panelH, 18); ctx.fill();
@@ -2096,6 +2109,7 @@ function drawRare(ctx, w, h, cardData, artworkImage, foilStyle = 'Standard') {
     (isBleed && foilStyle === 'Special Illustration') ? '#475569' : '#94C5D9',
     'italic 500 13px "Inter",sans-serif'
   );
+  }
 
   // ── 7. FOOTER ──────────────────────────────────────────────
   const footerY = isBleed ? h - 44 : 800;
@@ -2112,7 +2126,7 @@ function drawRare(ctx, w, h, cardData, artworkImage, foilStyle = 'Standard') {
 // ============================================================
 function drawEpic(ctx, w, h, cardData, artworkImage, foilStyle = 'Standard') {
   const elementColor = getElementColor(cardData.element);
-  const isBleed = isFullBleed(foilStyle);
+  const isBleed = isFullBleed(foilStyle) || cardData.hideStats;
 
   // ── 1. BACKGROUND (cosmic nebula) ──────────────────────────
   if (isBleed) {
@@ -2266,7 +2280,7 @@ function drawEpic(ctx, w, h, cardData, artworkImage, foilStyle = 'Standard') {
   }
 
   // ── 5. SPECIES BAR ─────────────────────────────────────────
-  if (!isBleed) {
+  if (!isBleed && !cardData.hideStats) {
     ctx.save();
     ctx.fillStyle = 'rgba(10,7,20,0.85)'; ctx.fillRect(30, 476, w-60, 22);
     ctx.strokeStyle = 'rgba(168,85,247,0.3)'; ctx.lineWidth = 1; ctx.strokeRect(30, 476, w-60, 22);
@@ -2276,7 +2290,8 @@ function drawEpic(ctx, w, h, cardData, artworkImage, foilStyle = 'Standard') {
   }
 
   // ── 6. ATTACK PANEL ────────────────────────────────────────
-  const panelY = isBleed ? 480 : 510, panelH = isBleed ? 300 : 262;
+  if (!cardData.hideStats) {
+    const panelY = isBleed ? 480 : 510, panelH = isBleed ? 300 : 262;
   ctx.save();
   if (isBleed && foilStyle === 'Secret Gold') {
     ctx.fillStyle = 'rgba(5,8,18,0.88)'; drawRoundRectPath(ctx, 28, panelY, w-56, panelH, 18); ctx.fill();
@@ -2345,6 +2360,7 @@ function drawEpic(ctx, w, h, cardData, artworkImage, foilStyle = 'Standard') {
     (isBleed && foilStyle === 'Special Illustration') ? '#475569' : '#C4B5DD',
     'italic 500 13px "Inter",sans-serif'
   );
+  }
 
   // ── 7. FOOTER ──────────────────────────────────────────────
   const footerY = isBleed ? h - 44 : 800;
@@ -2360,7 +2376,7 @@ function drawEpic(ctx, w, h, cardData, artworkImage, foilStyle = 'Standard') {
 // LEGENDARY TCG Template Design — "DIVINE CROWN MEGA"
 // ============================================================
 function drawLegendary(ctx, w, h, cardData, artworkImage, foilStyle = 'Standard') {
-  const isBleed = isFullBleed(foilStyle);
+  const isBleed = isFullBleed(foilStyle) || cardData.hideStats;
 
   const goldGrad = ctx.createLinearGradient(0, 0, w, h);
   goldGrad.addColorStop(0, '#D97706');
@@ -2512,7 +2528,7 @@ function drawLegendary(ctx, w, h, cardData, artworkImage, foilStyle = 'Standard'
   }
 
   // ── 5. SPECIES BAR ─────────────────────────────────────────
-  if (!isBleed) {
+  if (!isBleed && !cardData.hideStats) {
     ctx.save();
     ctx.fillStyle = 'rgba(5,5,8,0.88)'; ctx.fillRect(30, 476, w-60, 22);
     ctx.strokeStyle = goldGrad; ctx.lineWidth = 1.5; ctx.strokeRect(30, 476, w-60, 22);
@@ -2522,10 +2538,11 @@ function drawLegendary(ctx, w, h, cardData, artworkImage, foilStyle = 'Standard'
   }
 
   // ── 6. ATTACK PANEL — PARCHMENT (Royal Artifact) ───────────
-  // Kertas tua bertekstur dengan trim emas; teks jadi gelap seperti
-  // tinta di gulungan mantra
-  const panelY = isBleed ? 478 : 510, panelH = isBleed ? 302 : 262;
-  drawParchmentPanel(ctx, 28, panelY, w-56, panelH, 16);
+  if (!cardData.hideStats) {
+    // Kertas tua bertekstur dengan trim emas; teks jadi gelap seperti
+    // tinta di gulungan mantra
+    const panelY = isBleed ? 478 : 510, panelH = isBleed ? 302 : 262;
+    drawParchmentPanel(ctx, 28, panelY, w-56, panelH, 16);
 
   // LEGENDARY RULE banner stamp at top of panel
   ctx.save();
@@ -2575,6 +2592,7 @@ function drawLegendary(ctx, w, h, cardData, artworkImage, foilStyle = 'Standard'
   drawWrappedText(ctx, cardData.description || 'Penguasa internet tertinggi yang disembah para netizen. Kehadirannya melipatgandakan hype global secara instan.', w/2, descY, w - 96, 16,
     '#5B451D', 'italic 500 12px "Inter",sans-serif'
   );
+  }
 
   // ── 7. FOOTER ──────────────────────────────────────────────
   const footerY = isBleed ? h - 46 : 802;
@@ -2994,11 +3012,12 @@ export function drawCardBackCanvas(rarity) {
  * @param {HTMLImageElement} artworkImage - The preloaded 2D cat illustration image
  * @returns {HTMLCanvasElement} The drawn canvas element
  */
-export function drawCardCanvas(cardData, artworkImage) {
+export function drawCardCanvas(cardData, artworkImage, scaleOverride = null) {
   const canvas = document.createElement('canvas');
   // Resolusi 2× di tier medium/high supaya teks & garis tetap tajam saat
-  // kartu tampil besar; koordinat logis tetap 600×840 berkat ctx.scale
-  const S = getQualityConfig().canvasScale;
+  // kartu tampil besar; koordinat logis tetap 600×840 berkat ctx.scale.
+  // scaleOverride dipakai mode HD (detail/download) untuk tekstur super tajam.
+  const S = scaleOverride ?? getQualityConfig().canvasScale;
   canvas.width = 600 * S;
   canvas.height = 840 * S;
   const ctx = canvas.getContext('2d');
@@ -3032,5 +3051,55 @@ export function drawCardCanvas(cardData, artworkImage) {
   }
 
   return canvas;
+}
+
+// Muat artwork (crossOrigin agar canvas tidak ter-taint saat toDataURL)
+function loadArtwork(url) {
+  return new Promise((resolve) => {
+    if (!url) return resolve(null);
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => resolve(img);
+    img.onerror = () => resolve(null); // fallback: frame + placeholder
+    img.src = url;
+  });
+}
+
+/**
+ * Render kartu resolusi tinggi lalu unduh sebagai JPG.
+ * @param {Object} cardData - metadata kartu (name, rarity, imageUrl, dst)
+ * @param {Object} opts - { scale=3, quality=0.95, filename }
+ * @returns {Promise<{ ok: boolean, reason?: string }>}
+ */
+export async function downloadCardImage(cardData, opts = {}) {
+  const { scale = 3, quality = 0.95 } = opts;
+  await ensureFontsReady();
+  const url = cardData.imageUrl || `/placeholders/${(cardData.rarity || 'common').toLowerCase()}-placeholder.svg`;
+  const art = await loadArtwork(url);
+  const canvas = drawCardCanvas({ ...cardData }, art, scale);
+
+  let dataUrl;
+  try {
+    dataUrl = canvas.toDataURL('image/jpeg', quality);
+  } catch (e) {
+    // Canvas ter-taint (artwork tanpa header CORS) → tidak bisa export
+    return { ok: false, reason: 'Gambar kartu tidak bisa diunduh (sumber gambar tidak mengizinkan). Coba lagi nanti.' };
+  }
+
+  const safeName = (cardData.name || 'memecat').replace(/[^a-z0-9]+/gi, '-').toLowerCase();
+  const a = document.createElement('a');
+  a.href = dataUrl;
+  a.download = opts.filename || `memecats-${safeName}.jpg`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  return { ok: true };
+}
+
+// Pastikan font siap sebelum render download (hindari fallback font sistem)
+async function ensureFontsReady() {
+  try {
+    if (document.fonts?.ready) await document.fonts.ready;
+  } catch { /* abaikan */ }
 }
 

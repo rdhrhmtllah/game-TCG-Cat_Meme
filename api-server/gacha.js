@@ -5,31 +5,12 @@ import requireAuth from './_lib/requireAuth.js';
 import { sendError, logError } from './_lib/errors.js';
 import { checkRateLimit } from './_lib/rateLimit.js';
 import { incrementMission } from './missions.js';
+import { rollRarity, weightedPick, fallbackOrder, RARITY_RANK } from './_lib/gachaOdds.js';
+import { grantXp, XP_REWARDS, PITY_THRESHOLD } from './_lib/progression.js';
 
 const GACHA_COST = 100;
 const CARDS_PER_PACK = 5;
 const SYBIL_LOCK_HOURS = 72;
-
-// Tabel distribusi rarity (Bagian 5.2)
-const RARITY_TABLE = [
-  { rarity: 'Legendary', min: 0, max: 2.0 },
-  { rarity: 'Epic', min: 2.01, max: 10.0 },
-  { rarity: 'Rare', min: 10.01, max: 30.0 },
-  { rarity: 'Common', min: 30.01, max: 100.0 },
-];
-
-// Urutan rarity dari paling langka ke paling umum
-const RARITY_ORDER = ['Legendary', 'Epic', 'Rare', 'Common'];
-
-// Rarity rank for sorting (higher = rarer)
-const RARITY_RANK = { Common: 0, Rare: 1, Epic: 2, Legendary: 3 };
-
-function determineRarity(roll) {
-  for (const tier of RARITY_TABLE) {
-    if (roll >= tier.min && roll <= tier.max) return tier.rarity;
-  }
-  return 'Common';
-}
 
 /**
  * POST /api/gacha
@@ -48,7 +29,7 @@ export default requireAuth(async function handler(req, res) {
 
   try {
     const result = await db.transaction(async (tx) => {
-      const [user] = await tx.select({ coins: users.coins, createdAt: users.createdAt })
+      const [user] = await tx.select({ coins: users.coins, createdAt: users.createdAt, pityCounter: users.pityCounter })
         .from(users)
         .where(eq(users.id, req.userId))
         ;
@@ -74,31 +55,41 @@ export default requireAuth(async function handler(req, res) {
       const hoursSinceCreation = (Date.now() - userCreatedAt) / (1000 * 60 * 60);
       const isAccountBound = hoursSinceCreation < SYBIL_LOCK_HOURS;
 
-      // Pull 5 cards
+      // Pull 5 cards (dengan pity: jaminan Epic+ tiap PITY_THRESHOLD kartu)
       const cardsDrawn = [];
+      let pity = user.pityCounter || 0;
+      let pityTriggered = false;
 
       for (let i = 0; i < CARDS_PER_PACK; i++) {
-        const roll = Math.random() * 100;
-        const targetRarity = determineRarity(roll);
+        // Pity: bila sudah PITY_THRESHOLD kartu tanpa Epic+, paksa Epic+
+        // (Legendary 20% / Epic 80% mengikuti rasio base chance 2:8)
+        const forced = pity >= PITY_THRESHOLD
+          ? (Math.random() < 0.2 ? 'Legendary' : 'Epic')
+          : null;
+        if (forced) pityTriggered = true;
+
+        const targetRarity = forced || rollRarity();
         let selectedCard = null;
 
-        // Coba target rarity dulu, lalu fallback ke rarity lain (search SEMUA)
-        const searchOrder = [
-          targetRarity,
-          ...RARITY_ORDER.filter(r => r !== targetRarity),
-        ];
+        // Urutan pencarian bila pool target kosong. Saat pity, dahulukan Epic+
+        // (jaminan). Normal: DEGRADE ke rarity lebih umum, jangan naik ke
+        // Legendary — cegah banjir Legendary saat pool Common/Epic kosong.
+        const searchOrder = forced
+          ? [forced, forced === 'Legendary' ? 'Epic' : 'Legendary', 'Rare', 'Common']
+          : fallbackOrder(targetRarity);
 
         for (const rarity of searchOrder) {
-          const pool = await tx.select({ id: masterCards.id })
+          // Ambil pool + dropWeight → weighted pick (kartu berbobot rendah
+          // = lebih langka dalam rarity-nya)
+          const pool = await tx.select({ id: masterCards.id, dropWeight: masterCards.dropWeight })
             .from(masterCards)
             .where(and(eq(masterCards.rarity, rarity), eq(masterCards.isActive, true)));
 
           if (pool.length > 0) {
-            const randomIdx = Math.floor(Math.random() * pool.length);
-            const cardId = pool[randomIdx].id;
+            const picked = weightedPick(pool);
             [selectedCard] = await tx.select()
               .from(masterCards)
-              .where(eq(masterCards.id, cardId));
+              .where(eq(masterCards.id, picked.id));
             break;
           }
         }
@@ -134,12 +125,27 @@ export default requireAuth(async function handler(req, res) {
           });
         }
 
+        // Update pity: dapat Epic/Legendary → reset; selain itu → +1
+        if (selectedCard.rarity === 'Epic' || selectedCard.rarity === 'Legendary') {
+          pity = 0;
+        } else {
+          pity++;
+        }
+
         cardsDrawn.push({
           ...selectedCard,
           isNew,
           quantityOwned,
         });
       }
+
+      // Simpan pity counter final
+      await tx.update(users)
+        .set({ pityCounter: pity })
+        .where(eq(users.id, req.userId));
+
+      // Grant XP (menangani level-up + bonus coin di dalam transaksi)
+      const xpResult = await grantXp(tx, req.userId, XP_REWARDS.open_pack);
 
       // Sort: Common first → Legendary last (for dramatic reveal)
       cardsDrawn.sort((a, b) => (RARITY_RANK[a.rarity] || 0) - (RARITY_RANK[b.rarity] || 0));
@@ -151,7 +157,11 @@ export default requireAuth(async function handler(req, res) {
         cardsDrawn,
         cardDrawn: bestCard, // backward compat
         highestRarity: bestCard.rarity,
-        coinsRemaining: debited.coins,
+        coinsRemaining: debited.coins + (xpResult.coinBonus || 0),
+        pityCounter: pity,
+        pityThreshold: PITY_THRESHOLD,
+        pityTriggered,
+        levelUp: xpResult.leveledUp ? { level: xpResult.newLevel, coinBonus: xpResult.coinBonus } : null,
       };
     });
 
