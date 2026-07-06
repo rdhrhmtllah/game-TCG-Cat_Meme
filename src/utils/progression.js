@@ -1,7 +1,8 @@
 // Kurva XP/Level untuk render XP bar. HARUS sama dengan
 // api-server/_lib/progression.js (backend). Konstanta pity ikut di sini.
 
-export const PITY_THRESHOLD = 25;
+export const PITY_THRESHOLD = 10;      // jaminan Epic+ (4★)
+export const LEGENDARY_PITY = 90;      // jaminan Legendary (5★)
 
 export function xpForLevel(level) {
   return Math.floor(80 * Math.pow(level, 1.35));

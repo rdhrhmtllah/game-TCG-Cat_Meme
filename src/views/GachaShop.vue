@@ -344,18 +344,33 @@
             </p>
             <p v-else class="text-center text-muted text-xs mb-4">{{ masterCardCount }} kartu tersedia • Putar pack untuk melihat-lihat</p>
 
-            <!-- Pity: jaminan Epic+ -->
-            <div class="w-full mb-4 glass-panel rounded-xl px-4 py-3">
-              <div class="flex items-center justify-between mb-1.5">
-                <span class="text-[11px] font-display text-epic-light flex items-center gap-1">💎 Jaminan Epic+</span>
-                <span class="text-[11px] font-display font-bold tabular-nums" :class="pityRemaining <= 5 ? 'text-legendary' : 'text-muted'">
-                  {{ pityRemaining }} pull lagi
-                </span>
+            <!-- Pity: jaminan Epic+ (4★) & Legendary (5★) ala Genshin -->
+            <div class="w-full mb-4 glass-panel rounded-xl px-4 py-3 space-y-3">
+              <div>
+                <div class="flex items-center justify-between mb-1.5">
+                  <span class="text-[11px] font-display text-epic-light flex items-center gap-1">💎 Jaminan Epic+</span>
+                  <span class="text-[11px] font-display font-bold tabular-nums" :class="pityRemaining <= 3 ? 'text-legendary' : 'text-muted'">
+                    {{ pityRemaining }} kartu lagi
+                  </span>
+                </div>
+                <div class="w-full h-1.5 bg-white/5 rounded-full overflow-hidden">
+                  <div class="h-full rounded-full transition-all duration-500"
+                    style="background: linear-gradient(90deg,#A855F7,#C084FC);"
+                    :style="{ width: (pityProgress * 100) + '%' }"></div>
+                </div>
               </div>
-              <div class="w-full h-1.5 bg-white/5 rounded-full overflow-hidden">
-                <div class="h-full rounded-full transition-all duration-500"
-                  style="background: linear-gradient(90deg,#A855F7,#C084FC);"
-                  :style="{ width: (pityProgress * 100) + '%' }"></div>
+              <div>
+                <div class="flex items-center justify-between mb-1.5">
+                  <span class="text-[11px] font-display text-legendary flex items-center gap-1">👑 Jaminan Legendary</span>
+                  <span class="text-[11px] font-display font-bold tabular-nums" :class="legPityRemaining <= 10 ? 'text-legendary' : 'text-muted'">
+                    {{ legPityRemaining }} kartu lagi
+                  </span>
+                </div>
+                <div class="w-full h-1.5 bg-white/5 rounded-full overflow-hidden">
+                  <div class="h-full rounded-full transition-all duration-500"
+                    style="background: linear-gradient(90deg,#D97706,#FCD34D);"
+                    :style="{ width: (legPityProgress * 100) + '%' }"></div>
+                </div>
               </div>
             </div>
 
@@ -437,7 +452,7 @@ import { useAuthStore } from '@/stores/auth.js';
 import { usePlayerStore } from '@/stores/player.js';
 import { useToast } from '@/composables/useToast.js';
 import { useSound } from '@/composables/useSound.js';
-import { PITY_THRESHOLD } from '@/utils/progression.js';
+import { PITY_THRESHOLD, LEGENDARY_PITY } from '@/utils/progression.js';
 import CoinDisplay from '@/components/CoinDisplay.vue';
 import Card3D from '@/components/Card3D.vue';
 import GachaPack from '@/components/GachaPack.vue';
@@ -454,10 +469,14 @@ const step = ref('idle');
 // Pack tampil fullscreen saat memilih & merobek (bukan di kotak kecil)
 const isImmersive = computed(() => step.value === 'selecting' || step.value === 'tearing');
 
-// Pity: jaminan Epic+ tiap PITY_THRESHOLD pull
+// Pity: jaminan Epic+ (4★) tiap PITY_THRESHOLD kartu
 const pityCounter = computed(() => authStore.user?.pityCounter || 0);
 const pityRemaining = computed(() => Math.max(0, PITY_THRESHOLD - pityCounter.value));
 const pityProgress = computed(() => Math.min(1, pityCounter.value / PITY_THRESHOLD));
+// Pity: jaminan Legendary (5★) tiap LEGENDARY_PITY kartu
+const legPityCounter = computed(() => authStore.user?.legendaryPity || 0);
+const legPityRemaining = computed(() => Math.max(0, LEGENDARY_PITY - legPityCounter.value));
+const legPityProgress = computed(() => Math.min(1, legPityCounter.value / LEGENDARY_PITY));
 const revealedCards = ref([]);
 const highestRarity = ref('Common');
 const currentRevealIndex = ref(0);

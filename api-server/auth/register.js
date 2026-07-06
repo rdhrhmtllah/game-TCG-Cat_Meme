@@ -91,6 +91,7 @@ export default async function handler(req, res) {
         xp: users.xp,
         level: users.level,
         pityCounter: users.pityCounter,
+        legendaryPity: users.legendaryPity,
         hasSeenTour: users.hasSeenTour,
       });
 

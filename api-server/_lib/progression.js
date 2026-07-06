@@ -38,8 +38,11 @@ export const XP_REWARDS = {
   daily_quest_bonus: 30,
 };
 
-// Pity gacha: jaminan Epic+ setelah N kartu tanpa Epic/Legendary.
-export const PITY_THRESHOLD = 25;
+// Pity gacha (model Genshin):
+// - Epic+ (4★) dijamin setelah PITY_THRESHOLD kartu tanpa Epic/Legendary.
+// - Legendary (5★) dijamin setelah LEGENDARY_PITY kartu tanpa Legendary.
+export const PITY_THRESHOLD = 10;
+export const LEGENDARY_PITY = 90;
 
 // Bonus coin saat naik level (skalanya dengan level baru).
 export function levelUpCoinBonus(newLevel) {

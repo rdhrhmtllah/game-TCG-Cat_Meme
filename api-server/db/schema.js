@@ -24,6 +24,7 @@ export const users = pgTable('users', {
   xp: integer('xp').default(0).notNull(),
   level: integer('level').default(1).notNull(),
   pityCounter: integer('pity_counter').default(0).notNull(),
+  legendaryPity: integer('legendary_pity').default(0).notNull(),
   referralCode: varchar('referral_code', { length: 12 }).unique(),
   referredBy: integer('referred_by'),
   referralClaimed: boolean('referral_claimed').default(false).notNull(),

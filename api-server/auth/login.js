@@ -94,6 +94,7 @@ export default async function handler(req, res) {
         xp: foundUser.xp,
         level: foundUser.level,
         pityCounter: foundUser.pityCounter,
+        legendaryPity: foundUser.legendaryPity,
         hasSeenTour: foundUser.hasSeenTour,
       },
       token,

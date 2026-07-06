@@ -6,7 +6,7 @@ import { sendError, logError } from './_lib/errors.js';
 import { checkRateLimit } from './_lib/rateLimit.js';
 import { incrementMission } from './missions.js';
 import { rollRarity, weightedPick, fallbackOrder, RARITY_RANK } from './_lib/gachaOdds.js';
-import { grantXp, XP_REWARDS, PITY_THRESHOLD } from './_lib/progression.js';
+import { grantXp, XP_REWARDS, PITY_THRESHOLD, LEGENDARY_PITY } from './_lib/progression.js';
 
 const GACHA_COST = 100;
 const CARDS_PER_PACK = 5;
@@ -29,7 +29,7 @@ export default requireAuth(async function handler(req, res) {
 
   try {
     const result = await db.transaction(async (tx) => {
-      const [user] = await tx.select({ coins: users.coins, createdAt: users.createdAt, pityCounter: users.pityCounter })
+      const [user] = await tx.select({ coins: users.coins, createdAt: users.createdAt, pityCounter: users.pityCounter, legendaryPity: users.legendaryPity })
         .from(users)
         .where(eq(users.id, req.userId))
         ;
@@ -55,17 +55,18 @@ export default requireAuth(async function handler(req, res) {
       const hoursSinceCreation = (Date.now() - userCreatedAt) / (1000 * 60 * 60);
       const isAccountBound = hoursSinceCreation < SYBIL_LOCK_HOURS;
 
-      // Pull 5 cards (dengan pity: jaminan Epic+ tiap PITY_THRESHOLD kartu)
+      // Pull 5 kartu. Pity ala Genshin: Epic+ dijamin tiap PITY_THRESHOLD kartu,
+      // Legendary dijamin tiap LEGENDARY_PITY kartu tanpa Legendary.
       const cardsDrawn = [];
       let pity = user.pityCounter || 0;
+      let legPity = user.legendaryPity || 0;
       let pityTriggered = false;
 
       for (let i = 0; i < CARDS_PER_PACK; i++) {
-        // Pity: bila sudah PITY_THRESHOLD kartu tanpa Epic+, paksa Epic+
-        // (Legendary 20% / Epic 80% mengikuti rasio base chance 2:8)
-        const forced = pity >= PITY_THRESHOLD
-          ? (Math.random() < 0.2 ? 'Legendary' : 'Epic')
-          : null;
+        // Prioritas: pity Legendary (5★) dulu, lalu pity Epic+ (4★).
+        let forced = null;
+        if (legPity >= LEGENDARY_PITY) forced = 'Legendary';
+        else if (pity >= PITY_THRESHOLD) forced = 'Epic';
         if (forced) pityTriggered = true;
 
         const targetRarity = forced || rollRarity();
@@ -125,11 +126,13 @@ export default requireAuth(async function handler(req, res) {
           });
         }
 
-        // Update pity: dapat Epic/Legendary → reset; selain itu → +1
-        if (selectedCard.rarity === 'Epic' || selectedCard.rarity === 'Legendary') {
-          pity = 0;
+        // Update pity. Epic+ mereset pity Epic; Legendary juga mereset pity Legendary.
+        if (selectedCard.rarity === 'Legendary') {
+          pity = 0; legPity = 0;
+        } else if (selectedCard.rarity === 'Epic') {
+          pity = 0; legPity++;
         } else {
-          pity++;
+          pity++; legPity++;
         }
 
         cardsDrawn.push({
@@ -139,9 +142,9 @@ export default requireAuth(async function handler(req, res) {
         });
       }
 
-      // Simpan pity counter final
+      // Simpan pity counter final (Epic+ & Legendary)
       await tx.update(users)
-        .set({ pityCounter: pity })
+        .set({ pityCounter: pity, legendaryPity: legPity })
         .where(eq(users.id, req.userId));
 
       // Grant XP (menangani level-up + bonus coin di dalam transaksi)
@@ -160,6 +163,8 @@ export default requireAuth(async function handler(req, res) {
         coinsRemaining: debited.coins + (xpResult.coinBonus || 0),
         pityCounter: pity,
         pityThreshold: PITY_THRESHOLD,
+        legendaryPity: legPity,
+        legendaryPityThreshold: LEGENDARY_PITY,
         pityTriggered,
         levelUp: xpResult.leveledUp ? { level: xpResult.newLevel, coinBonus: xpResult.coinBonus } : null,
       };

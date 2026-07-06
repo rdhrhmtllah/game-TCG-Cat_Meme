@@ -4,8 +4,9 @@
 // kartu DALAM rarity berdasarkan dropWeight tiap kartu.
 // ═══════════════════════════════════════════════════════════════
 
-// Peluang dasar per tier rarity (%). Total = 100.
-export const RARITY_BASE_CHANCE = { Legendary: 2, Epic: 8, Rare: 20, Common: 70 };
+// Peluang dasar per tier rarity (%). Total = 100. Model "seperti Genshin":
+// 5★(Legendary) 0.6% & 4★(Epic) 5.1% mengikuti rate resmi Genshin.
+export const RARITY_BASE_CHANCE = { Legendary: 0.6, Epic: 5.1, Rare: 20, Common: 74.3 };
 
 // Urutan dari paling langka ke paling umum (untuk fallback pool kosong)
 export const RARITY_ORDER = ['Legendary', 'Epic', 'Rare', 'Common'];
