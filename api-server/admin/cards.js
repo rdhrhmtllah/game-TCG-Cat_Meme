@@ -32,17 +32,19 @@ export default requireAdmin(async function handler(req, res) {
   const cardId = idMatch ? parseInt(idMatch[1]) : null;
 
   try {
+    // WAJIB di-await: tanpa await, rejection async lolos dari try/catch ini
+    // dan jatuh ke handler 500 generik di api/index.js (mis. duplikat nama).
     switch (req.method) {
       case 'GET':
-        return handleGetCards(req, res, url);
+        return await handleGetCards(req, res, url);
       case 'POST':
-        return handleCreateCard(req, res);
+        return await handleCreateCard(req, res);
       case 'PATCH':
         if (!cardId) return sendError(res, 400, 'VALIDATION_ERROR', 'ID kartu diperlukan.');
-        return handleUpdateCard(req, res, cardId);
+        return await handleUpdateCard(req, res, cardId);
       case 'DELETE':
         if (!cardId) return sendError(res, 400, 'VALIDATION_ERROR', 'ID kartu diperlukan.');
-        return handleDeleteCard(req, res, cardId);
+        return await handleDeleteCard(req, res, cardId);
       default:
         return sendError(res, 405, 'VALIDATION_ERROR', 'Method not allowed');
     }
