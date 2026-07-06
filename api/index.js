@@ -8,6 +8,7 @@ import adminStats from '../api-server/admin/stats.js';
 import adminUsers from '../api-server/admin/users.js';
 import adminUserDetail from '../api-server/admin/user-detail.js';
 import adminUserAction from '../api-server/admin/user-action.js';
+import adminCardUsage from '../api-server/admin/card-usage.js';
 import adminLogout from '../api-server/admin/logout.js';
 import me from '../api-server/me.js';
 import masterCards from '../api-server/master-cards.js';
@@ -42,6 +43,7 @@ const routes = {
   '/api/admin/users': adminUsers,
   '/api/admin/user-detail': adminUserDetail,
   '/api/admin/user-action': adminUserAction,
+  '/api/admin/card-usage': adminCardUsage,
   '/api/admin/logout': adminLogout,
   '/api/me': me,
   '/api/master-cards': masterCards,

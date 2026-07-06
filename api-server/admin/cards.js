@@ -241,7 +241,7 @@ async function handleUpdateCard(req, res, cardId) {
   return res.status(200).json({ message: 'Kartu berhasil diperbarui.', card: updated });
 }
 
-// DELETE — Soft-delete
+// DELETE — Soft-delete (deaktivasi) atau HARD delete (?hard=1, permanen)
 async function handleDeleteCard(req, res, cardId) {
   const [existing] = await db.select()
     .from(masterCards)
@@ -249,6 +249,15 @@ async function handleDeleteCard(req, res, cardId) {
 
   if (!existing) {
     return sendError(res, 404, 'NOT_FOUND', 'Kartu tidak ditemukan.');
+  }
+
+  const hard = new URL(req.url, 'http://localhost').searchParams.get('hard') === '1';
+
+  if (hard) {
+    // Hapus PERMANEN. FK onDelete: cascade → inventory user & listing market
+    // untuk kartu ini ikut terhapus. Pastikan admin sudah konfirmasi di UI.
+    await db.delete(masterCards).where(eq(masterCards.id, cardId));
+    return res.status(200).json({ message: 'Kartu dihapus permanen.', hard: true });
   }
 
   await db.update(masterCards)

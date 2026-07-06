@@ -387,6 +387,8 @@
 
                 <!-- Save bar -->
                 <div class="p-4 lg:p-5 border-t border-white/5 flex gap-3 items-center">
+                  <button v-if="editingCard" @click="openDeleteConfirm" title="Hapus permanen"
+                    class="btn-danger px-3.5 font-display flex-shrink-0">🗑️</button>
                   <button @click="handleSave" :disabled="saving" class="btn-primary flex-1 font-display">{{ saving ? '⏳ Menyimpan…' : (editingCard ? '💾 Update Card' : '✨ Create Card') }}</button>
                   <button @click="closeEditor" class="btn-secondary px-6 font-display">Cancel</button>
                 </div>
@@ -419,12 +421,58 @@
         </div>
       </Transition>
     </Teleport>
+
+    <!-- ===== KONFIRMASI HAPUS PERMANEN ===== -->
+    <Teleport to="body">
+      <Transition name="modal">
+        <div v-if="showDeleteConfirm" class="modal-overlay flex items-center justify-center p-4" style="z-index: 60;" @click.self="showDeleteConfirm = false">
+          <div class="modal-content w-full max-w-md glass-panel-strong overflow-hidden animate-scale-in">
+            <div class="p-5 border-b border-white/5 flex items-center gap-3">
+              <div class="w-10 h-10 rounded-xl bg-red-500/15 flex items-center justify-center flex-shrink-0"><span class="text-xl">⚠️</span></div>
+              <div class="min-w-0">
+                <h2 class="font-display font-bold text-lg text-red-300">Hapus Permanen Kartu?</h2>
+                <p class="text-muted text-xs truncate">{{ editingCard?.name }}</p>
+              </div>
+            </div>
+            <div class="p-5 space-y-4">
+              <div v-if="deleteLoading" class="text-center text-muted text-sm py-4">⏳ Mengecek kepemilikan…</div>
+              <template v-else-if="deleteUsage">
+                <div v-if="deleteUsage.owners > 0" class="glass-panel p-3.5 rounded-xl border border-red-500/25 bg-red-500/[0.05]">
+                  <p class="text-sm font-display font-bold text-red-300 mb-2">🚨 Kartu ini sudah dimiliki user!</p>
+                  <ul class="text-xs text-secondary space-y-1">
+                    <li>👥 <strong>{{ deleteUsage.owners }}</strong> user memiliki kartu ini</li>
+                    <li>🃏 <strong>{{ deleteUsage.copies }}</strong> total salinan dimiliki</li>
+                    <li v-if="deleteUsage.showcase > 0">🏆 <strong>{{ deleteUsage.showcase }}</strong> terpasang di showcase</li>
+                    <li v-if="deleteUsage.listings > 0">🛒 <strong>{{ deleteUsage.listings }}</strong> listing aktif di market</li>
+                  </ul>
+                  <p class="text-[11px] text-red-300/85 mt-2 leading-relaxed">Menghapus permanen akan <strong>menghilangkan kartu ini dari koleksi & market mereka</strong> juga. Tindakan ini tidak bisa dibatalkan.</p>
+                </div>
+                <div v-else class="glass-panel p-3.5 rounded-xl border border-emerald-500/20 bg-emerald-500/[0.04]">
+                  <p class="text-sm font-display font-semibold text-emerald-300">✅ Belum ada user yang memiliki kartu ini.</p>
+                  <p class="text-[11px] text-muted mt-1">Aman dihapus permanen. Tindakan tidak bisa dibatalkan.</p>
+                </div>
+                <p class="text-[11px] text-muted leading-relaxed">💡 Kalau ragu, gunakan <strong>Nonaktifkan (Off)</strong> saja — kartu tak muncul di gacha tanpa menghapus data user.</p>
+              </template>
+            </div>
+            <div class="p-5 border-t border-white/5 flex gap-3">
+              <button @click="showDeleteConfirm = false" class="btn-secondary flex-1 font-display">Batal</button>
+              <button @click="confirmHardDelete" :disabled="deleting || deleteLoading" class="btn-danger flex-1 font-display">
+                {{ deleting ? '⏳ Menghapus…' : '🗑️ Hapus Permanen' }}
+              </button>
+            </div>
+          </div>
+        </div>
+      </Transition>
+    </Teleport>
   </div>
 </template>
 
 <script setup>
 import { ref, watch, computed, onMounted } from 'vue';
 import Card3D from '@/components/Card3D.vue';
+import { useToast } from '@/composables/useToast.js';
+
+const toast = useToast();
 
 // ============ STATE ============
 const activeTab = ref('cards');
@@ -681,6 +729,40 @@ async function handleSave() {
     closeEditor(); fetchCards(); fetchStats();
   } catch (e) { formError.value = e.message || 'Error saving card'; }
   finally { saving.value = false; }
+}
+
+// ============ HARD DELETE (dengan cek kepemilikan) ============
+const showDeleteConfirm = ref(false);
+const deleteUsage = ref(null);
+const deleteLoading = ref(false);
+const deleting = ref(false);
+
+async function openDeleteConfirm() {
+  if (!editingCard.value) return;
+  showDeleteConfirm.value = true;
+  deleteUsage.value = null;
+  deleteLoading.value = true;
+  try {
+    const res = await fetch(`/api/admin/card-usage?id=${editingCard.value.id}`);
+    if (res.ok) deleteUsage.value = await res.json();
+    else toast.error('Gagal mengecek kepemilikan kartu.');
+  } catch { toast.error('Gagal mengecek kepemilikan kartu.'); }
+  finally { deleteLoading.value = false; }
+}
+
+async function confirmHardDelete() {
+  if (!editingCard.value || deleting.value) return;
+  deleting.value = true;
+  try {
+    const res = await fetch(`/api/admin/cards/${editingCard.value.id}?hard=1`, { method: 'DELETE' });
+    if (!res.ok) throw new Error((await res.json()).message || 'Gagal menghapus.');
+    toast.success('Kartu dihapus permanen.');
+    showDeleteConfirm.value = false;
+    closeEditor();
+    fetchCards(); fetchStats();
+  } catch (e) {
+    toast.error(e.message || 'Gagal menghapus kartu.');
+  } finally { deleting.value = false; }
 }
 
 // ============ ACTIONS ============
