@@ -151,6 +151,35 @@ export const coinFlipHistory = pgTable('coin_flip_history', {
 });
 
 // ============================================================
+// 9. REDEEM CODES — Kode promo dari developer
+// ============================================================
+export const redeemCodes = pgTable('redeem_codes', {
+  id: serial('id').primaryKey(),
+  code: varchar('code', { length: 40 }).notNull().unique(), // disimpan UPPERCASE
+  coinReward: integer('coin_reward').notNull(),
+  maxUses: integer('max_uses'),                 // null = tak terbatas
+  usedCount: integer('used_count').default(0).notNull(),
+  startsAt: timestamp('starts_at').notNull(),
+  endsAt: timestamp('ends_at').notNull(),
+  isActive: boolean('is_active').default(true).notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+}, (table) => ({
+  codeIdx: index('redeem_code_idx').on(table.code),
+}));
+
+// ============================================================
+// 10. REDEEM CODE USES — 1 code = 1x per user
+// ============================================================
+export const redeemCodeUses = pgTable('redeem_code_uses', {
+  id: serial('id').primaryKey(),
+  codeId: integer('code_id').references(() => redeemCodes.id, { onDelete: 'cascade' }).notNull(),
+  userId: integer('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
+  redeemedAt: timestamp('redeemed_at').defaultNow().notNull(),
+}, (table) => ({
+  uniqUserCode: index('redeem_use_unique').on(table.codeId, table.userId),
+}));
+
+// ============================================================
 // RELASI
 // ============================================================
 export const usersRelations = relations(users, ({ many }) => ({

@@ -99,6 +99,22 @@
       </div>
     </section>
 
+    <!-- ===== REDEEM CODE ===== -->
+    <section class="section-glass p-5 mb-6">
+      <div class="flex items-center gap-2 mb-1.5">
+        <span class="text-base">🎁</span>
+        <h2 class="text-sm font-display font-bold">Redeem Code</h2>
+      </div>
+      <p class="text-[11px] text-muted mb-3 leading-relaxed">Punya kode promo dari developer? Tukarkan di sini untuk hadiah coin.</p>
+      <div class="flex items-center gap-2">
+        <input v-model="redeemInput" @keyup.enter="doRedeem" :disabled="redeeming" maxlength="40"
+          class="input-premium flex-1 font-display tracking-wider uppercase" placeholder="MASUKKAN KODE" />
+        <button @click="doRedeem" :disabled="redeeming || !redeemInput.trim()" class="btn-primary px-5 font-display flex-shrink-0">
+          {{ redeeming ? '⏳' : '🎁 Redeem' }}
+        </button>
+      </div>
+    </section>
+
     <!-- ===== MAIN DASHBOARD GRID ===== -->
     <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
       
@@ -456,6 +472,32 @@ const sound = useSound();
 
 // --- Level / XP ---
 const levelInfo = computed(() => computeLevel(authStore.user?.xp || 0));
+
+// --- Redeem Code ---
+const redeemInput = ref('');
+const redeeming = ref(false);
+async function doRedeem() {
+  const code = redeemInput.value.trim();
+  if (!code || redeeming.value) return;
+  redeeming.value = true;
+  try {
+    const res = await fetch('/api/redeem', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${authStore.token}` },
+      body: JSON.stringify({ code }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Gagal menukarkan kode.');
+    toast.success(data.message || `+${data.coinReward} coin!`);
+    redeemInput.value = '';
+    try { sound.play('coinBurst'); } catch {}
+    await playerStore.refreshAfterAction();
+  } catch (e) {
+    toast.error(e.message || 'Gagal menukarkan kode.');
+  } finally {
+    redeeming.value = false;
+  }
+}
 const xpToNext = computed(() => Math.max(0, levelInfo.value.xpForNext - levelInfo.value.xpIntoLevel));
 const nextLevelReward = computed(() => levelUpCoinBonus(levelInfo.value.level + 1));
 

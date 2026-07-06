@@ -9,7 +9,9 @@ import adminUsers from '../api-server/admin/users.js';
 import adminUserDetail from '../api-server/admin/user-detail.js';
 import adminUserAction from '../api-server/admin/user-action.js';
 import adminCardUsage from '../api-server/admin/card-usage.js';
+import adminRedeemCodes from '../api-server/admin/redeem-codes.js';
 import adminLogout from '../api-server/admin/logout.js';
+import redeem from '../api-server/redeem.js';
 import me from '../api-server/me.js';
 import masterCards from '../api-server/master-cards.js';
 import gacha from '../api-server/gacha.js';
@@ -44,6 +46,8 @@ const routes = {
   '/api/admin/user-detail': adminUserDetail,
   '/api/admin/user-action': adminUserAction,
   '/api/admin/card-usage': adminCardUsage,
+  '/api/admin/redeem-codes': adminRedeemCodes,
+  '/api/redeem': redeem,
   '/api/admin/logout': adminLogout,
   '/api/me': me,
   '/api/master-cards': masterCards,

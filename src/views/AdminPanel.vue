@@ -79,6 +79,7 @@
         <AdminDashboard v-if="section === 'dashboard'" @go-users="section = 'users'" />
         <AdminUsers v-else-if="section === 'users'" />
         <AdminCardMaker v-else-if="section === 'cards'" />
+        <AdminRedeemCodes v-else-if="section === 'redeem'" />
       </main>
     </div>
   </div>
@@ -90,6 +91,7 @@ import { useAdminAuth } from '@/composables/useAdminAuth.js';
 import AdminDashboard from '@/views/admin/AdminDashboard.vue';
 import AdminUsers from '@/views/admin/AdminUsers.vue';
 import AdminCardMaker from '@/views/admin/AdminCardMaker.vue';
+import AdminRedeemCodes from '@/views/admin/AdminRedeemCodes.vue';
 import TurnstileWidget from '@/components/TurnstileWidget.vue';
 
 const admin = useAdminAuth();
@@ -105,6 +107,7 @@ const sections = [
   { id: 'dashboard', label: 'Dashboard', icon: '📊' },
   { id: 'users', label: 'Users', icon: '👥' },
   { id: 'cards', label: 'Card Maker', icon: '🃏' },
+  { id: 'redeem', label: 'Redeem Codes', icon: '🎁' },
 ];
 
 async function handleLogin() {
