@@ -38,9 +38,9 @@
               : 'border-2 border-dashed border-white/8 hover:border-white/15 hover:border-accent/30 bg-white/[0.01] hover:bg-white/[0.03] flex flex-col items-center justify-center cursor-pointer'"
             @click="playerStore.showcase[slot - 1] ? openDetail(playerStore.showcase[slot - 1]) : scrollToGrid()"
           >
-            <!-- Slot Has Card -->
+            <!-- Slot Has Card (Card2D: ringan & tanpa WebGL, anti kartu-putih) -->
             <template v-if="playerStore.showcase[slot - 1]">
-              <Card3D
+              <Card2D
                 :image-url="playerStore.showcase[slot - 1].imageUrl"
                 :rarity="playerStore.showcase[slot - 1].rarity"
                 :name="playerStore.showcase[slot - 1].name"
@@ -52,7 +52,6 @@
                 :img-zoom="playerStore.showcase[slot - 1].imgZoom"
                 :img-offset-x="playerStore.showcase[slot - 1].imgOffsetX"
                 :img-offset-y="playerStore.showcase[slot - 1].imgOffsetY"
-                mode="mini"
               />
               <!-- Tiny remove overlay button on hover -->
               <button @click.stop="handleShowcaseActionDirect(playerStore.showcase[slot - 1], 'remove')"

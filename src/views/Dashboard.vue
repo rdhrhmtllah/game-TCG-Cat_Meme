@@ -276,7 +276,7 @@
           @click="$router.push('/binder')"
         >
           <template v-if="playerStore.showcase[slot - 1]">
-            <Card3D
+            <Card2D
               :image-url="playerStore.showcase[slot - 1].imageUrl"
               :rarity="playerStore.showcase[slot - 1].rarity"
               :name="playerStore.showcase[slot - 1].name"
@@ -289,7 +289,6 @@
               :img-offset-x="playerStore.showcase[slot - 1].imgOffsetX"
               :img-offset-y="playerStore.showcase[slot - 1].imgOffsetY"
               :drop-rate="playerStore.dropRateOf(playerStore.showcase[slot - 1].id)"
-              mode="mini"
             />
           </template>
           <template v-else>
@@ -320,6 +319,7 @@ import { useSound } from '@/composables/useSound.js';
 import { useTour } from '@/composables/useTour.js';
 import CoinDisplay from '@/components/CoinDisplay.vue';
 import Card3D from '@/components/Card3D.vue';
+import Card2D from '@/components/Card2D.vue';
 
 const tour = useTour();
 const authStore = useAuthStore();

@@ -683,6 +683,10 @@ function initScene() {
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   containerRef.value.appendChild(renderer.domElement);
 
+  // Pulih otomatis bila browser membuang context WebGL (mis. terlalu banyak
+  // context aktif saat transisi halaman) → cegah kartu putih permanen.
+  renderer.domElement.addEventListener('webglcontextlost', onContextLost, false);
+
   // Ensure canvas receives touch events properly on mobile
   renderer.domElement.style.touchAction = 'none';
 
@@ -1488,13 +1492,34 @@ function cleanup() {
   cardGeo?.dispose();
   cardGeo = null;
   if (customShaderMaterial) customShaderMaterial.dispose();
-  if (renderer) { renderer.dispose(); renderer.forceContextLoss(); }
+  if (renderer) {
+    renderer.domElement.removeEventListener('webglcontextlost', onContextLost);
+    renderer.domElement.parentNode?.removeChild(renderer.domElement);
+    renderer.dispose();
+    renderer.forceContextLoss();
+  }
   scene = camera = renderer = cardGroup = cardFrontMesh = cardBackMesh = null;
   customShaderMaterial = null;
 }
 
 function onVisibilityChange() {
   syncLoopState();
+}
+
+// Recovery WebGL context yang hilang: bangun ulang seluruh scene setelah jeda
+// singkat (transisi halaman biasanya sudah selesai & context lama terbebas).
+let contextRecovering = false;
+function onContextLost(e) {
+  e.preventDefault(); // izinkan pemulihan
+  stopLoop();
+  if (contextRecovering) return;
+  contextRecovering = true;
+  setTimeout(() => {
+    contextRecovering = false;
+    if (!containerRef.value) return; // sudah unmount
+    try { cleanup(); } catch { /* abaikan */ }
+    try { initScene(); } catch { /* abaikan */ }
+  }, 300);
 }
 
 onMounted(() => {
