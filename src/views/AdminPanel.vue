@@ -33,7 +33,8 @@
             </select>
           </div>
           <div v-if="loginError" class="text-red-400 text-sm glass-panel p-2 rounded-lg text-center">{{ loginError }}</div>
-          <button type="submit" :disabled="loading" class="btn-primary w-full font-display">
+          <TurnstileWidget ref="turnstileRef" v-model="turnstileToken" />
+          <button type="submit" :disabled="loading || !turnstileToken" class="btn-primary w-full font-display">
             {{ loading ? '⏳ Verifying...' : '🔐 Login Admin' }}
           </button>
         </form>
@@ -89,6 +90,7 @@ import { useAdminAuth } from '@/composables/useAdminAuth.js';
 import AdminDashboard from '@/views/admin/AdminDashboard.vue';
 import AdminUsers from '@/views/admin/AdminUsers.vue';
 import AdminCardMaker from '@/views/admin/AdminCardMaker.vue';
+import TurnstileWidget from '@/components/TurnstileWidget.vue';
 
 const admin = useAdminAuth();
 
@@ -97,6 +99,7 @@ const sessionTtl = ref(43200);
 const loginError = ref('');
 const loading = ref(false);
 const section = ref('dashboard');
+const turnstileToken = ref(''); const turnstileRef = ref(null);
 
 const sections = [
   { id: 'dashboard', label: 'Dashboard', icon: '📊' },
@@ -108,9 +111,10 @@ async function handleLogin() {
   loading.value = true;
   loginError.value = '';
   try {
-    await admin.login(secret.value, sessionTtl.value);
+    await admin.login(secret.value, sessionTtl.value, turnstileToken.value);
   } catch (e) {
     loginError.value = e.message || 'Secret salah.';
+    turnstileRef.value?.reset();
   } finally {
     loading.value = false;
   }

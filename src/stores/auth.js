@@ -35,11 +35,11 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
-  async function register(username, email, password) {
+  async function register(username, email, password, turnstileToken) {
     const res = await fetch('/api/auth/register', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, email, password }),
+      body: JSON.stringify({ username, email, password, turnstileToken }),
     });
     const data = await safeJson(res);
     if (!res.ok) throw data;
@@ -48,11 +48,11 @@ export const useAuthStore = defineStore('auth', () => {
     return data;
   }
 
-  async function login(username, password) {
+  async function login(username, password, turnstileToken) {
     const res = await fetch('/api/auth/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, password }),
+      body: JSON.stringify({ username, password, turnstileToken }),
     });
     const data = await safeJson(res);
     if (!res.ok) throw data;

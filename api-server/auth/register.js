@@ -5,6 +5,7 @@ import { registerSchema } from '../_lib/schemas.js';
 import { signToken } from '../_lib/jwt.js';
 import { sendError, logError } from '../_lib/errors.js';
 import { checkRateLimit } from '../_lib/rateLimit.js';
+import { verifyTurnstile } from '../_lib/turnstile.js';
 import { validateEmail } from '../_lib/emailValidation.js';
 import bcrypt from 'bcryptjs';
 
@@ -26,6 +27,12 @@ export default async function handler(req, res) {
   }
 
   try {
+    // Verifikasi anti-bot (Turnstile) sebelum kerja berat
+    const captcha = await verifyTurnstile(req.body?.turnstileToken, ip);
+    if (!captcha.ok) {
+      return sendError(res, 400, 'CAPTCHA_FAILED', captcha.reason);
+    }
+
     // Validasi input
     const parsed = registerSchema.safeParse(req.body);
     if (!parsed.success) {

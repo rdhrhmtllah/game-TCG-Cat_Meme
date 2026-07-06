@@ -54,7 +54,9 @@
         <span>⚠️</span> {{ error }}
       </div>
 
-      <button type="submit" :disabled="loading" class="btn-primary w-full py-3.5 font-display text-base">
+      <TurnstileWidget ref="turnstileRef" v-model="turnstileToken" />
+
+      <button type="submit" :disabled="loading || !turnstileToken" class="btn-primary w-full py-3.5 font-display text-base">
         {{ loading ? 'Loading...' : 'Daftar' }}
       </button>
     </form>
@@ -72,6 +74,7 @@ import { useRouter } from 'vue-router';
 import { useAuthStore } from '@/stores/auth.js';
 import { useToast } from '@/composables/useToast.js';
 import AuthLayout from '@/components/auth/AuthLayout.vue';
+import TurnstileWidget from '@/components/TurnstileWidget.vue';
 
 const router = useRouter();
 const authStore = useAuthStore();
@@ -79,18 +82,22 @@ const toast = useToast();
 const username = ref(''); const email = ref(''); const password = ref(''); const confirmPassword = ref('');
 const error = ref(''); const clientError = ref(''); const loading = ref(false);
 const showPassword = ref(false);
+const turnstileToken = ref(''); const turnstileRef = ref(null);
 
 async function handleRegister() {
   error.value = ''; clientError.value = '';
   if (password.value !== confirmPassword.value) { clientError.value = 'Password tidak cocok.'; return; }
   loading.value = true;
   try {
-    await authStore.register(username.value, email.value, password.value);
+    await authStore.register(username.value, email.value, password.value, turnstileToken.value);
     toast.success('Akun berhasil dibuat!');
     const redirect = router.currentRoute.value.query.redirect || '/app';
     router.push(redirect);
   }
-  catch (e) { error.value = e.message || 'Pendaftaran gagal.'; }
+  catch (e) {
+    error.value = e.message || 'Pendaftaran gagal.';
+    turnstileRef.value?.reset();
+  }
   finally { loading.value = false; }
 }
 </script>

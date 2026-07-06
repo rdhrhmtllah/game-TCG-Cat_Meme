@@ -39,7 +39,9 @@
         <span>⚠️</span> {{ error }}
       </div>
 
-      <button type="submit" :disabled="loading" class="btn-primary w-full py-3.5 font-display text-base">
+      <TurnstileWidget ref="turnstileRef" v-model="turnstileToken" />
+
+      <button type="submit" :disabled="loading || !turnstileToken" class="btn-primary w-full py-3.5 font-display text-base">
         {{ loading ? 'Loading...' : 'Login' }}
       </button>
     </form>
@@ -56,20 +58,25 @@ import { ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { useAuthStore } from '@/stores/auth.js';
 import AuthLayout from '@/components/auth/AuthLayout.vue';
+import TurnstileWidget from '@/components/TurnstileWidget.vue';
 
 const router = useRouter();
 const authStore = useAuthStore();
 const username = ref(''); const password = ref(''); const error = ref('');
 const loading = ref(false); const showPassword = ref(false);
+const turnstileToken = ref(''); const turnstileRef = ref(null);
 
 async function handleLogin() {
   error.value = ''; loading.value = true;
   try {
-    await authStore.login(username.value, password.value);
+    await authStore.login(username.value, password.value, turnstileToken.value);
     const redirect = router.currentRoute.value.query.redirect || '/app';
     router.push(redirect);
   }
-  catch (e) { error.value = e.message || 'Login gagal.'; }
+  catch (e) {
+    error.value = e.message || 'Login gagal.';
+    turnstileRef.value?.reset(); // token sekali-pakai → minta baru
+  }
   finally { loading.value = false; }
 }
 </script>

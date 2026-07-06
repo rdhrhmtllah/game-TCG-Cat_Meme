@@ -19,11 +19,11 @@ async function checkSession() {
   return loggedIn.value;
 }
 
-async function login(secret, ttl = 43200) {
+async function login(secret, ttl = 43200, turnstileToken) {
   const res = await fetch('/api/admin/login', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ secret, ttl }),
+    body: JSON.stringify({ secret, ttl, turnstileToken }),
   });
   let data = {};
   try { data = await res.json(); } catch { /* abaikan */ }

@@ -5,6 +5,7 @@ import { loginSchema } from '../_lib/schemas.js';
 import { signToken } from '../_lib/jwt.js';
 import { sendError, logError } from '../_lib/errors.js';
 import { checkRateLimit } from '../_lib/rateLimit.js';
+import { verifyTurnstile } from '../_lib/turnstile.js';
 import { logInfo } from '../_lib/logger.js';
 import bcrypt from 'bcryptjs';
 
@@ -41,6 +42,12 @@ export default async function handler(req, res) {
     // Rate limit by identifier (anti-brute force per akun)
     if (!checkRateLimit(`login:user:${identifier}`, 5, 60_000)) {
       return sendError(res, 429, 'VALIDATION_ERROR', 'Terlalu banyak percobaan untuk akun ini. Coba lagi nanti.');
+    }
+
+    // Verifikasi anti-bot (Turnstile) sebelum kerja berat (DB/bcrypt)
+    const captcha = await verifyTurnstile(req.body?.turnstileToken, ip);
+    if (!captcha.ok) {
+      return sendError(res, 400, 'CAPTCHA_FAILED', captcha.reason);
     }
 
     // Cari user berdasarkan username ATAU email
