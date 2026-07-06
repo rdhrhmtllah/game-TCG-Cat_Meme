@@ -349,8 +349,8 @@
               <div>
                 <div class="flex items-center justify-between mb-1.5">
                   <span class="text-[11px] font-display text-epic-light flex items-center gap-1">💎 Jaminan Epic+</span>
-                  <span class="text-[11px] font-display font-bold tabular-nums" :class="pityRemaining <= 3 ? 'text-legendary' : 'text-muted'">
-                    {{ pityRemaining }} kartu lagi
+                  <span class="text-[11px] font-display font-bold tabular-nums" :class="pityRemainingPacks <= 1 ? 'text-legendary' : 'text-muted'">
+                    {{ pityRemainingPacks }} pack lagi
                   </span>
                 </div>
                 <div class="w-full h-1.5 bg-white/5 rounded-full overflow-hidden">
@@ -362,8 +362,8 @@
               <div>
                 <div class="flex items-center justify-between mb-1.5">
                   <span class="text-[11px] font-display text-legendary flex items-center gap-1">👑 Jaminan Legendary</span>
-                  <span class="text-[11px] font-display font-bold tabular-nums" :class="legPityRemaining <= 10 ? 'text-legendary' : 'text-muted'">
-                    {{ legPityRemaining }} kartu lagi
+                  <span class="text-[11px] font-display font-bold tabular-nums" :class="legPityRemainingPacks <= 2 ? 'text-legendary' : 'text-muted'">
+                    {{ legPityRemainingPacks }} pack lagi
                   </span>
                 </div>
                 <div class="w-full h-1.5 bg-white/5 rounded-full overflow-hidden">
@@ -469,13 +469,18 @@ const step = ref('idle');
 // Pack tampil fullscreen saat memilih & merobek (bukan di kotak kecil)
 const isImmersive = computed(() => step.value === 'selecting' || step.value === 'tearing');
 
-// Pity: jaminan Epic+ (4★) tiap PITY_THRESHOLD kartu
+// Pity dihitung per-kartu (adil, = per-pull ala Genshin), tapi DITAMPILKAN
+// dalam satuan pack (1 pack = 5 kartu) agar sesuai cara pandang "berapa kali pull".
+const CARDS_PER_PACK = 5;
+// Jaminan Epic+ (4★) tiap PITY_THRESHOLD kartu
 const pityCounter = computed(() => authStore.user?.pityCounter || 0);
 const pityRemaining = computed(() => Math.max(0, PITY_THRESHOLD - pityCounter.value));
+const pityRemainingPacks = computed(() => Math.ceil(pityRemaining.value / CARDS_PER_PACK));
 const pityProgress = computed(() => Math.min(1, pityCounter.value / PITY_THRESHOLD));
-// Pity: jaminan Legendary (5★) tiap LEGENDARY_PITY kartu
+// Jaminan Legendary (5★) tiap LEGENDARY_PITY kartu
 const legPityCounter = computed(() => authStore.user?.legendaryPity || 0);
 const legPityRemaining = computed(() => Math.max(0, LEGENDARY_PITY - legPityCounter.value));
+const legPityRemainingPacks = computed(() => Math.ceil(legPityRemaining.value / CARDS_PER_PACK));
 const legPityProgress = computed(() => Math.min(1, legPityCounter.value / LEGENDARY_PITY));
 const revealedCards = ref([]);
 const highestRarity = ref('Common');
