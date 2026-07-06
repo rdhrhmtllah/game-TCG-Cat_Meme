@@ -47,6 +47,10 @@ export default requireAdmin(async function handler(req, res) {
         return sendError(res, 405, 'VALIDATION_ERROR', 'Method not allowed');
     }
   } catch (err) {
+    // Nama kartu unik → tangani ramah (bukan 500)
+    if (err?.code === '23505') {
+      return sendError(res, 409, 'DUPLICATE', 'Nama kartu sudah dipakai. Gunakan nama lain.');
+    }
     logError('/api/admin/cards', err);
     return sendError(res, 500, 'INTERNAL_ERROR', 'Terjadi kesalahan, coba lagi nanti.');
   }

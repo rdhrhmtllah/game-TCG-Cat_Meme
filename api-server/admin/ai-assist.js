@@ -137,28 +137,26 @@ Response HARUS dalam format JSON valid:
     contentParts.push({ text: systemPrompt });
     contentParts.push({ text: userPrompt });
 
+    // Coba beberapa model berurutan (yang pertama berhasil dipakai). Urutan:
+    // 2.5-flash (aktif di free tier) → 1.5-flash (fallback, kuota terpisah).
+    const MODELS = ["gemini-2.5-flash", "gemini-1.5-flash"];
     let result;
-    try {
-      const model = genAI.getGenerativeModel({
-        model: "gemini-2.0-flash",
-        generationConfig: {
-          responseMimeType: "application/json",
-        },
-      });
-      result = await model.generateContent(contentParts);
-    } catch (err) {
-      console.warn(
-        "Gemini 2.0 Flash failed, falling back to Gemini 1.5 Flash:",
-        err.message,
-      );
-      const fallbackModel = genAI.getGenerativeModel({
-        model: "gemini-2.5-flash",
-        generationConfig: {
-          responseMimeType: "application/json",
-        },
-      });
-      result = await fallbackModel.generateContent(contentParts);
+    let lastErr;
+    for (const modelName of MODELS) {
+      try {
+        const model = genAI.getGenerativeModel({
+          model: modelName,
+          generationConfig: { responseMimeType: "application/json" },
+        });
+        result = await model.generateContent(contentParts);
+        lastErr = null;
+        break;
+      } catch (err) {
+        lastErr = err;
+        console.warn(`Gemini ${modelName} gagal:`, err.message);
+      }
     }
+    if (!result) throw lastErr || new Error("Semua model AI gagal.");
 
     const responseText = result.response.text().trim();
 
@@ -189,12 +187,18 @@ Response HARUS dalam format JSON valid:
       raw: responseText,
     });
   } catch (err) {
+    const msg = err?.message || "Unknown error";
+    // Kuota Gemini habis / rate limit → pesan ramah + status tepat (bukan 500)
+    if (/\b429\b|quota|too many requests|rate.?limit/i.test(msg)) {
+      return sendError(
+        res,
+        429,
+        "AI_QUOTA",
+        "Kuota AI (Gemini) sedang habis. Coba lagi nanti, atau isi kartu manual tanpa AI.",
+      );
+    }
     logError("/api/admin/ai-assist", err);
-    return sendError(
-      res,
-      500,
-      "INTERNAL_ERROR",
-      "AI assist gagal: " + (err.message || "Unknown error"),
-    );
+    // Error upstream AI → 502 (bukan 'internal server error' yang menyesatkan)
+    return sendError(res, 502, "AI_ERROR", "AI assist gagal: " + msg);
   }
 });

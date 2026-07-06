@@ -92,7 +92,15 @@ export default async function handler(req, res) {
     pathname = '/api/inventory';
   }
 
-  const routeHandler = routes[pathname];
+  let routeHandler = routes[pathname];
+
+  // Sub-path parameterized routes: peta di atas exact-match, sedangkan
+  // cards.js menangani /stats, /bulk-action, /:id secara internal via parsing
+  // pathname. Tanpa ini, PROD 404 untuk stats/edit/delete/bulk (dev jalan
+  // karena filesystem-fallback dev-server).
+  if (!routeHandler && pathname.startsWith('/api/admin/cards')) {
+    routeHandler = adminCards;
+  }
 
   if (!routeHandler) {
     res.status(404).json({ message: `Endpoint tidak ditemukan: ${pathname}`, code: 'NOT_FOUND' });
