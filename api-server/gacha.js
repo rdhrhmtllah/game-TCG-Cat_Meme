@@ -1,6 +1,6 @@
 import { db } from './db/client.js';
 import { users, masterCards, userInventory } from './db/schema.js';
-import { eq, and, gte, sql } from 'drizzle-orm';
+import { eq, and, gte, sql, inArray } from 'drizzle-orm';
 import requireAuth from './_lib/requireAuth.js';
 import { sendError, logError } from './_lib/errors.js';
 import { checkRateLimit } from './_lib/rateLimit.js';
@@ -55,9 +55,19 @@ export default requireAuth(async function handler(req, res) {
       const hoursSinceCreation = (Date.now() - userCreatedAt) / (1000 * 60 * 60);
       const isAccountBound = hoursSinceCreation < SYBIL_LOCK_HOURS;
 
+      // ── Preload seluruh kartu aktif SEKALI, dikelompokkan per rarity ──
+      // Dulu tiap kartu meng-query pool LALU fetch ulang kartu (≈10 round-trip
+      // per pack). Master card statis selama satu pull, jadi cukup 1 query lalu
+      // pilih di memori — kritikal untuk latensi lintas-region (Vercel↔Neon).
+      const activeCards = await tx.select()
+        .from(masterCards)
+        .where(eq(masterCards.isActive, true));
+      const poolByRarity = { Common: [], Rare: [], Epic: [], Legendary: [] };
+      for (const c of activeCards) (poolByRarity[c.rarity] ||= []).push(c);
+
       // Pull 5 kartu. Pity ala Genshin: Epic+ dijamin tiap PITY_THRESHOLD kartu,
       // Legendary dijamin tiap LEGENDARY_PITY kartu tanpa Legendary.
-      const cardsDrawn = [];
+      const draws = [];
       let pity = user.pityCounter || 0;
       let legPity = user.legendaryPity || 0;
       let pityTriggered = false;
@@ -70,7 +80,6 @@ export default requireAuth(async function handler(req, res) {
         if (forced) pityTriggered = true;
 
         const targetRarity = forced || rollRarity();
-        let selectedCard = null;
 
         // Urutan pencarian bila pool target kosong. Saat pity, dahulukan Epic+
         // (jaminan). Normal: DEGRADE ke rarity lebih umum, jangan naik ke
@@ -79,51 +88,16 @@ export default requireAuth(async function handler(req, res) {
           ? [forced, forced === 'Legendary' ? 'Epic' : 'Legendary', 'Rare', 'Common']
           : fallbackOrder(targetRarity);
 
+        // Weighted pick dari pool in-memory (kartu berbobot rendah = lebih
+        // langka dalam rarity-nya). Tanpa query DB per kartu.
+        let selectedCard = null;
         for (const rarity of searchOrder) {
-          // Ambil pool + dropWeight → weighted pick (kartu berbobot rendah
-          // = lebih langka dalam rarity-nya)
-          const pool = await tx.select({ id: masterCards.id, dropWeight: masterCards.dropWeight })
-            .from(masterCards)
-            .where(and(eq(masterCards.rarity, rarity), eq(masterCards.isActive, true)));
-
-          if (pool.length > 0) {
-            const picked = weightedPick(pool);
-            [selectedCard] = await tx.select()
-              .from(masterCards)
-              .where(eq(masterCards.id, picked.id));
-            break;
-          }
+          const pool = poolByRarity[rarity];
+          if (pool && pool.length > 0) { selectedCard = weightedPick(pool); break; }
         }
 
         if (!selectedCard) {
           throw { status: 503, code: 'CARD_POOL_EMPTY', message: 'Tidak ada kartu tersedia. Seed database dengan: npm run db:seed' };
-        }
-
-        // Upsert user_inventory
-        const [existingInv] = await tx.select()
-          .from(userInventory)
-          .where(and(
-            eq(userInventory.userId, req.userId),
-            eq(userInventory.cardId, selectedCard.id)
-          ));
-
-        let quantityOwned = 1;
-        let isNew = true;
-
-        if (existingInv) {
-          await tx.update(userInventory)
-            .set({ quantity: existingInv.quantity + 1 })
-            .where(eq(userInventory.id, existingInv.id));
-          quantityOwned = existingInv.quantity + 1;
-          isNew = false;
-        } else {
-          await tx.insert(userInventory).values({
-            userId: req.userId,
-            cardId: selectedCard.id,
-            quantity: 1,
-            inShowcase: false,
-            isAccountBound,
-          });
         }
 
         // Update pity. Epic+ mereset pity Epic; Legendary juga mereset pity Legendary.
@@ -135,11 +109,50 @@ export default requireAuth(async function handler(req, res) {
           pity++; legPity++;
         }
 
-        cardsDrawn.push({
-          ...selectedCard,
-          isNew,
-          quantityOwned,
-        });
+        draws.push(selectedCard);
+      }
+
+      // ── Inventory dalam batch: baca kepemilikan 5 kartu SEKALI, lalu tulis
+      // per kartu unik. Dulu 2 query/kartu (baca+tulis) = 10 round-trip. ──
+      const distinctIds = [...new Set(draws.map((c) => c.id))];
+      const existingRows = await tx.select()
+        .from(userInventory)
+        .where(and(
+          eq(userInventory.userId, req.userId),
+          inArray(userInventory.cardId, distinctIds),
+        ));
+      const invByCard = new Map(existingRows.map((r) => [r.cardId, r]));
+
+      // Susun cardsDrawn dengan isNew & quantityOwned konsisten walau kartu
+      // sama muncul >1× dalam pack ini (baseline kepemilikan + urutan tarik).
+      const cardsDrawn = [];
+      const drawnSoFar = new Map();
+      for (const card of draws) {
+        const baseQty = invByCard.get(card.id)?.quantity || 0;
+        const already = drawnSoFar.get(card.id) || 0;
+        const isNew = baseQty === 0 && already === 0;
+        const quantityOwned = baseQty + already + 1;
+        drawnSoFar.set(card.id, already + 1);
+        cardsDrawn.push({ ...card, isNew, quantityOwned });
+      }
+
+      // Tulis inventory: 1 statement per kartu unik (update kalau sudah punya,
+      // insert kalau baru) — dijumlahkan sesuai berapa kali kartu itu ditarik.
+      for (const [cardId, count] of drawnSoFar) {
+        const ex = invByCard.get(cardId);
+        if (ex) {
+          await tx.update(userInventory)
+            .set({ quantity: ex.quantity + count })
+            .where(eq(userInventory.id, ex.id));
+        } else {
+          await tx.insert(userInventory).values({
+            userId: req.userId,
+            cardId,
+            quantity: count,
+            inShowcase: false,
+            isAccountBound,
+          });
+        }
       }
 
       // Simpan pity counter final (Epic+ & Legendary)

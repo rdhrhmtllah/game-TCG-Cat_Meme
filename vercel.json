@@ -1,6 +1,7 @@
 {
   "version": 2,
   "cleanUrls": true,
+  "regions": ["sin1"],
   "builds": [
     {
       "src": "api/index.js",
