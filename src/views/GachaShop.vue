@@ -74,7 +74,7 @@
       <Transition name="fade">
         <div v-if="step === 'revealing'" class="fixed inset-0 z-[60] flex flex-col items-center justify-between py-6"
           :style="{ background: currentTheme.stage, transition: 'background 0.5s ease' }"
-          @touchstart.prevent="onRevealTouchStart" @touchmove.prevent="onRevealTouchMove" @touchend="onRevealTouchEnd"
+          @touchstart="onRevealTouchStart" @touchmove.prevent="onRevealTouchMove" @touchend="onRevealTouchEnd"
         >
           <!-- Ambient rays bertema rarity -->
           <div class="absolute inset-0 flex items-center justify-center pointer-events-none opacity-60">
