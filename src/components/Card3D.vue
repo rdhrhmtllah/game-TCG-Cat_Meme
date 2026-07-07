@@ -386,6 +386,7 @@ let initialPinchDist = 0;
 let initialScale = 1.0;
 let isPinching = false;
 let resizeObserver = null;
+let appliedZoomScale = 1; // skala zoom terakhir yang dipakai untuk sizing buffer WebGL
 
 // Shader uniforms
 const shaderUniforms = {
@@ -1445,9 +1446,14 @@ watch(() => props.focused, (newVal) => {
   }
 });
 
-// Watch cardScale to bubble zoom status changes
+// Watch cardScale to bubble zoom status changes + jaga ketajaman saat zoom
 watch(cardScale, (newVal) => {
   emit('zoom-change', newVal > 1.05);
+  // Re-render buffer WebGL pada resolusi zoom (threshold hindari realokasi tiap
+  // frame pinch). Hanya untuk kartu yang boleh di-zoom (detail), bukan grid.
+  if (props.allowZoom && Math.abs(newVal - appliedZoomScale) > 0.12) {
+    syncRenderScale();
+  }
 });
 
 // Watch semua props kartu → rebuild in-place (texture, material, particle,
@@ -1479,6 +1485,27 @@ function onResize() {
   camera.updateProjectionMatrix();
   renderer.setSize(w, h);
   composer?.setSize(w, h);
+}
+
+// Saat kartu di-zoom, container di-perbesar via CSS transform sehingga buffer
+// WebGL ikut di-upscale → blur. Naikkan pixelRatio proporsional dengan skala
+// zoom agar kartu tetap tajam pada resolusi tampilnya (di-cap demi memori).
+function syncRenderScale() {
+  if (!renderer || !containerRef.value) return;
+  const w = containerRef.value.clientWidth;
+  const h = containerRef.value.clientHeight;
+  if (w === 0 || h === 0) return;
+  const baseCap = props.hd ? 3 : (props.mode === 'mini' ? quality.dprMini : quality.dpr);
+  const baseRatio = Math.min(window.devicePixelRatio, baseCap);
+  // Zoom-out (pinch < 1) tidak mengurangi resolusi di bawah baseline
+  const eff = Math.min(baseRatio * Math.max(1, cardScale.value), 6);
+  renderer.setPixelRatio(eff);
+  renderer.setSize(w, h);
+  if (composer) {
+    composer.setPixelRatio?.(eff);
+    composer.setSize(w, h);
+  }
+  appliedZoomScale = cardScale.value;
 }
 
 function cleanup() {
